@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { DivIcon } from "leaflet";
 import { Circle, MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import type { CafeRecord } from "@/lib/cafeMapStorage";
@@ -23,9 +24,9 @@ export default function CafeMapCanvas({
   onToggleRecordVisibility
 }: CafeMapCanvasProps) {
   const [isMounted, setIsMounted] = useState(false);
-  const [coffeeIcon, setCoffeeIcon] = useState<unknown>(null);
-  const [publicIcon, setPublicIcon] = useState<unknown>(null);
-  const [userIcon, setUserIcon] = useState<unknown>(null);
+  const [coffeeIcon, setCoffeeIcon] = useState<DivIcon | null>(null);
+  const [publicIcon, setPublicIcon] = useState<DivIcon | null>(null);
+  const [userIcon, setUserIcon] = useState<DivIcon | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -93,7 +94,7 @@ export default function CafeMapCanvas({
             <Marker
               key={record.id}
               position={[record.lat, record.lng]}
-              icon={(record.isOwn ? coffeeIcon : publicIcon) as never}
+              icon={record.isOwn ? coffeeIcon : publicIcon}
             >
               <Popup>
                 <div className="w-52 space-y-2">
@@ -145,7 +146,7 @@ export default function CafeMapCanvas({
               radius={90}
               pathOptions={{ color: "#0f766e", fillColor: "#2dd4bf", fillOpacity: 0.18 }}
             />
-            <Marker position={userPosition} icon={userIcon as never}>
+            <Marker position={userPosition} icon={userIcon}>
               <Popup>現在地</Popup>
             </Marker>
           </>

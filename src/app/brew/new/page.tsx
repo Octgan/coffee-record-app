@@ -183,7 +183,9 @@ export default function NewBrewPage() {
     );
   };
   const getFlavorChipClass = (flavor: string) => {
-    const family = flavorFamilies.find((item) => item.items.includes(flavor));
+    const family = flavorFamilies.find((item) =>
+      item.items.some((name) => name === flavor)
+    );
     return family?.chipClass ?? "bg-amber-100 text-amber-900";
   };
   const addOriginEntry = () => {
