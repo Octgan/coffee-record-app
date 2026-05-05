@@ -1,42 +1,33 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ComposableMap, Geographies, Geography } from "react-simple-maps";
 import { COFFEE_ORIGINS, ORIGIN_STORAGE_KEY } from "@/lib/coffeeOrigins";
 import {
-  BREW_LOG_STORAGE_KEY,
-  SAMPLE_BREW_LOGS,
+  getLogOriginCountries,
+  loadBrewLogsFromStorage,
+  logMatchesCountryKey,
+  normalizeMapCountryName,
   type StoredBrewLog
 } from "@/lib/brewLogStorage";
 
 const geographyUrl =
   "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
-function normalizeCountryName(name: string) {
-  return name.trim().toLowerCase();
-}
-function getLogOriginCountries(log: StoredBrewLog) {
-  if (log.origins && log.origins.length > 0) {
-    return log.origins.map((origin) => origin.country);
-  }
-  return [log.originCountry];
-}
-
 export default function WorldMapPage() {
-  const [logs, setLogs] = useState<StoredBrewLog[]>(SAMPLE_BREW_LOGS);
+  const router = useRouter();
+  const [logs, setLogs] = useState<StoredBrewLog[]>([]);
   const [visitedOrigins, setVisitedOrigins] = useState<string[]>([]);
   const [hoveredCountry, setHoveredCountry] = useState<string | null>(null);
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
 
   useEffect(() => {
-    const storedLogsRaw = localStorage.getItem(BREW_LOG_STORAGE_KEY);
+    const parsedLogs = loadBrewLogsFromStorage();
+    setLogs(parsedLogs);
     const storedLegacyOriginsRaw = localStorage.getItem(ORIGIN_STORAGE_KEY);
     try {
-      const parsedLogs = storedLogsRaw
-        ? (JSON.parse(storedLogsRaw) as StoredBrewLog[])
-        : SAMPLE_BREW_LOGS;
-      setLogs(parsedLogs.length > 0 ? parsedLogs : SAMPLE_BREW_LOGS);
       const originFromLogs = parsedLogs.flatMap((log) => getLogOriginCountries(log));
       const legacyOrigins = storedLegacyOriginsRaw
         ? (JSON.parse(storedLegacyOriginsRaw) as string[])
@@ -48,7 +39,7 @@ export default function WorldMapPage() {
   }, []);
 
   const visitedSet = useMemo(
-    () => new Set(visitedOrigins.map((item) => normalizeCountryName(item))),
+    () => new Set(visitedOrigins.map((item) => normalizeMapCountryName(item))),
     [visitedOrigins]
   );
 
@@ -63,21 +54,27 @@ export default function WorldMapPage() {
     const map = new Map<string, StoredBrewLog[]>();
     logs.forEach((log) => {
       getLogOriginCountries(log).forEach((country) => {
-        const key = normalizeCountryName(country);
+        const key = normalizeMapCountryName(country);
         const existing = map.get(key) ?? [];
         map.set(key, [...existing, log]);
       });
     });
     return map;
   }, [logs]);
+  const selectedCountryKey = selectedCountry
+    ? normalizeMapCountryName(selectedCountry)
+    : "";
   const selectedCountryLogs = selectedCountry
-    ? logsByCountry.get(normalizeCountryName(selectedCountry)) ?? []
+    ? logsByCountry.get(selectedCountryKey) ?? []
     : [];
-  const getSafeRating = (rating: number | undefined) => {
-    if (!rating || Number.isNaN(rating)) {
-      return 3;
+
+  const handleCountryClick = (rawName: string) => {
+    const key = normalizeMapCountryName(rawName);
+    setSelectedCountry(rawName);
+    const matches = logs.filter((log) => logMatchesCountryKey(log, key));
+    if (matches.length > 0) {
+      router.push(`/journal?country=${encodeURIComponent(key)}`);
     }
-    return Math.min(5, Math.max(1, Math.round(rating)));
   };
 
   return (
@@ -90,15 +87,23 @@ export default function WorldMapPage() {
               World Coffee Origin Map
             </h1>
             <p className="mt-2 text-sm text-amber-900/80">
-              記録済みの産地だけ、地図上でコーヒーブラウンに色づきます。
+              記録済みの産地だけ、地図上でコーヒーブラウンに色づきます。国をタップするとマイ・ノートへ進みます。
             </p>
           </div>
-          <Link
-            href="/"
-            className="rounded-lg border border-amber-700 px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
-          >
-            ダッシュボードへ戻る
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/journal"
+              className="rounded-lg border border-amber-600 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 transition hover:bg-amber-100"
+            >
+              マイ・ノート
+            </Link>
+            <Link
+              href="/"
+              className="rounded-lg border border-amber-700 px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
+            >
+              ダッシュボードへ戻る
+            </Link>
+          </div>
         </div>
 
         <div className="mt-6 flex flex-wrap items-center gap-4 text-sm">
@@ -128,31 +133,21 @@ export default function WorldMapPage() {
                   geographies.map((geo) => {
                     const rawName =
                       String(geo.properties.name ?? geo.properties.NAME ?? "").trim();
-                    const isVisited = visitedSet.has(normalizeCountryName(rawName));
+                    const isVisited = visitedSet.has(normalizeMapCountryName(rawName));
                     return (
                       <Geography
                         key={geo.rsmKey}
                         geography={geo}
-                        onMouseEnter={() => {
-                          if (isVisited) {
-                            setHoveredCountry(rawName);
-                          } else {
-                            setHoveredCountry(null);
-                          }
-                        }}
+                        onMouseEnter={() => setHoveredCountry(rawName)}
                         onMouseLeave={() => setHoveredCountry(null)}
-                        onClick={() => {
-                          if (isVisited) {
-                            setSelectedCountry(rawName);
-                          }
-                        }}
+                        onClick={() => handleCountryClick(rawName)}
                         style={{
                           default: {
                             fill: isVisited ? "#7a4b2a" : "#e9dbc7",
                             stroke: "#9b7a60",
                             strokeWidth: 0.6,
                             outline: "none",
-                            cursor: isVisited ? "pointer" : "default"
+                            cursor: "pointer"
                           },
                           hover: {
                             fill: isVisited ? "#965a32" : "#d8c4aa",
@@ -181,36 +176,40 @@ export default function WorldMapPage() {
 
           <aside className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5">
             <h2 className="text-base font-semibold text-amber-900">
-              {selectedCountry ? `${selectedCountry} の抽出履歴` : "国をクリックして履歴を見る"}
+              {selectedCountry ? `${selectedCountry} の抽出履歴` : "国をタップして確認"}
             </h2>
             <p className="mt-2 text-sm text-amber-900/70">
-              記録済みの国をクリックすると、その国に関連する抽出ログを確認できます。
+              記録がある国はマイ・ノートへジャンプします。ない国はここで案内します。
             </p>
 
             {selectedCountry && (
               <div className="mt-4 space-y-3">
                 {selectedCountryLogs.length > 0 ? (
-                  selectedCountryLogs.map((log) => {
-                    const safeRating = getSafeRating(log.overallRating);
-                    return (
+                  <>
+                    <p className="text-sm text-amber-900">
+                      この国に関連する記録が{" "}
+                      <span className="font-bold">{selectedCountryLogs.length}</span>{" "}
+                      件あります。
+                    </p>
                     <Link
-                      key={log.id}
-                      href={`/history/${log.id}`}
-                      className="block rounded-xl border border-amber-200 bg-white p-4 transition hover:border-amber-400 hover:bg-amber-50"
+                      href={`/journal?country=${encodeURIComponent(selectedCountryKey)}`}
+                      className="block w-full rounded-xl bg-amber-700 py-3 text-center text-sm font-semibold text-white transition hover:bg-amber-800"
                     >
-                      <p className="text-sm font-semibold text-amber-900">{log.date}</p>
-                      <p className="mt-1 text-sm text-amber-900">{log.beanName}</p>
-                      <p className="mt-1 text-sm text-amber-800">
-                        総合評価: {"★".repeat(safeRating)}{" "}
-                        {"☆".repeat(5 - safeRating)}
-                      </p>
+                      マイ・ノートで開く
                     </Link>
-                    );
-                  })
+                  </>
                 ) : (
-                  <p className="text-sm text-amber-900/70">
-                    この国の抽出ログはまだありません。
-                  </p>
+                  <div className="rounded-xl border border-amber-200 bg-white p-4 text-sm text-amber-900">
+                    <p className="font-medium leading-relaxed">
+                      まだ記録がありません。新しく記録しますか？
+                    </p>
+                    <Link
+                      href="/brew/new"
+                      className="mt-4 inline-flex w-full items-center justify-center rounded-lg bg-amber-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-800"
+                    >
+                      抽出を記録する
+                    </Link>
+                  </div>
                 )}
               </div>
             )}

@@ -2,31 +2,67 @@
 
 import { useEffect, useState } from "react";
 import type { DivIcon } from "leaflet";
-import { Circle, MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import {
+  Circle,
+  MapContainer,
+  Marker,
+  Popup,
+  TileLayer,
+  useMap,
+  useMapEvents
+} from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import type { CafeRecord } from "@/lib/cafeMapStorage";
 
 type DisplayCafeRecord = CafeRecord & { isOwn: boolean };
 
+function MapViewSync({ center, zoom }: { center: [number, number]; zoom: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, zoom, { animate: true });
+  }, [center, zoom, map]);
+  return null;
+}
+
+function MapClickLayer({
+  onMapClick
+}: {
+  onMapClick: (lat: number, lng: number) => void;
+}) {
+  useMapEvents({
+    click(e) {
+      onMapClick(e.latlng.lat, e.latlng.lng);
+    }
+  });
+  return null;
+}
+
 type CafeMapCanvasProps = {
   records: DisplayCafeRecord[];
   mapCenter: [number, number];
+  mapZoom?: number;
   userPosition: [number, number] | null;
+  registrationCoords: [number, number] | null;
   ownRecordIds: number[];
   onToggleRecordVisibility: (recordId: number) => void;
+  onMapClick: (lat: number, lng: number) => void;
 };
 
 export default function CafeMapCanvas({
   records,
   mapCenter,
+  mapZoom = 13,
   userPosition,
+  registrationCoords,
   ownRecordIds,
-  onToggleRecordVisibility
+  onToggleRecordVisibility,
+  onMapClick
 }: CafeMapCanvasProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [coffeeIcon, setCoffeeIcon] = useState<DivIcon | null>(null);
   const [publicIcon, setPublicIcon] = useState<DivIcon | null>(null);
   const [userIcon, setUserIcon] = useState<DivIcon | null>(null);
+  const [registrationIcon, setRegistrationIcon] = useState<DivIcon | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -60,9 +96,16 @@ export default function CafeMapCanvas({
         iconSize: [34, 34],
         iconAnchor: [17, 17]
       });
+      const reg = leaflet.divIcon({
+        className: "",
+        html: `<div class="registration-pin-icon fade-in-pin">📍</div>`,
+        iconSize: [40, 40],
+        iconAnchor: [20, 36]
+      });
       setCoffeeIcon(cup);
       setPublicIcon(publicCup);
       setUserIcon(me);
+      setRegistrationIcon(reg);
     });
 
     return () => {
@@ -74,15 +117,18 @@ export default function CafeMapCanvas({
     return <div className="h-full w-full bg-amber-100/50" />;
   }
 
+  const showUserMarker =
+    Boolean(userPosition) &&
+    (!registrationCoords ||
+      !userPosition ||
+      Math.abs(userPosition[0] - registrationCoords[0]) > 0.000_02 ||
+      Math.abs(userPosition[1] - registrationCoords[1]) > 0.000_02);
+
   return (
     <div className="h-[62vh] min-h-[420px] bg-[#f5efe3]">
-      <MapContainer
-        key={`${mapCenter[0]}-${mapCenter[1]}`}
-        center={mapCenter}
-        zoom={13}
-        scrollWheelZoom
-        className="h-full w-full"
-      >
+      <MapContainer center={mapCenter} zoom={mapZoom} scrollWheelZoom className="h-full w-full">
+        <MapViewSync center={mapCenter} zoom={mapZoom} />
+        <MapClickLayer onMapClick={onMapClick} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/">CARTO</a>'
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
@@ -134,7 +180,13 @@ export default function CafeMapCanvas({
             </Marker>
           ))}
 
-        {userPosition && userIcon && (
+        {registrationCoords && registrationIcon && (
+          <Marker position={registrationCoords} icon={registrationIcon} zIndexOffset={600}>
+            <Popup>この位置でスポットを保存します（名前は右側で編集）</Popup>
+          </Marker>
+        )}
+
+        {showUserMarker && userPosition && userIcon && (
           <>
             <Circle
               center={userPosition}
@@ -146,7 +198,7 @@ export default function CafeMapCanvas({
               radius={90}
               pathOptions={{ color: "#0f766e", fillColor: "#2dd4bf", fillOpacity: 0.18 }}
             />
-            <Marker position={userPosition} icon={userIcon}>
+            <Marker position={userPosition} icon={userIcon} zIndexOffset={500}>
               <Popup>現在地</Popup>
             </Marker>
           </>
@@ -247,6 +299,22 @@ export default function CafeMapCanvas({
             opacity: 1;
             transform: translateY(0) scale(1);
           }
+        }
+
+        .registration-pin-icon {
+          width: 40px;
+          height: 40px;
+          border-radius: 9999px;
+          background: linear-gradient(145deg, #ea580c, #c2410c);
+          border: 3px solid rgba(255, 255, 255, 0.95);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 18px;
+          line-height: 1;
+          box-shadow:
+            0 12px 22px rgba(154, 52, 18, 0.45),
+            0 4px 10px rgba(124, 45, 18, 0.35);
         }
       `}</style>
     </div>

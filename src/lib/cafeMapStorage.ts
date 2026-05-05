@@ -1,6 +1,14 @@
 export const CAFE_MAP_STORAGE_KEY = "coffee-cafe-map-logs";
 export const CAFE_PROFILE_STORAGE_KEY = "coffee-cafe-profile";
 
+/** 現在は localStorage。バックエンド（例: Supabase）と連携する場合はここで送信・同期する。 */
+export function persistCafeRecords(records: CafeRecord[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  localStorage.setItem(CAFE_MAP_STORAGE_KEY, JSON.stringify(records));
+}
+
 export type CafeRecord = {
   id: number;
   cafeName: string;

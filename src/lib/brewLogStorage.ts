@@ -22,6 +22,120 @@ export type StoredBrewLog = {
   memo: string;
 };
 
+export function normalizeMapCountryName(name: unknown) {
+  return String(name ?? "").trim().toLowerCase();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/** localStorage 等の不完全な JSON でも落ちないよう正規化する */
+export function coerceStoredBrewLog(raw: unknown): StoredBrewLog | null {
+  if (!isRecord(raw) || typeof raw.id !== "number" || Number.isNaN(raw.id)) {
+    return null;
+  }
+
+  const flavorsRaw = raw.flavors;
+  const flavors = Array.isArray(flavorsRaw)
+    ? flavorsRaw.filter((item): item is string => typeof item === "string")
+    : [];
+
+  let overallRating = Number(raw.overallRating);
+  if (!Number.isFinite(overallRating)) {
+    overallRating = 4;
+  }
+  overallRating = Math.min(5, Math.max(1, Math.round(overallRating)));
+
+  const originCountry =
+    typeof raw.originCountry === "string" && raw.originCountry.trim() !== ""
+      ? raw.originCountry
+      : "Unknown";
+
+  let origins: StoredBrewLog["origins"] = undefined;
+  if (Array.isArray(raw.origins) && raw.origins.length > 0) {
+    const mapped = raw.origins
+      .filter((entry): entry is Record<string, unknown> => isRecord(entry))
+      .map((entry) => ({
+        country: typeof entry.country === "string" ? entry.country : "",
+        ratio: typeof entry.ratio === "string" ? entry.ratio : String(entry.ratio ?? "")
+      }))
+      .filter((entry) => entry.country.trim() !== "");
+    origins = mapped.length > 0 ? mapped : undefined;
+  }
+
+  return {
+    id: raw.id,
+    date: typeof raw.date === "string" ? raw.date : String(raw.date ?? ""),
+    beanName: typeof raw.beanName === "string" ? raw.beanName : "未入力",
+    origins,
+    originCountry,
+    method: typeof raw.method === "string" ? raw.method : "ハンドドリップ",
+    equipmentName: typeof raw.equipmentName === "string" ? raw.equipmentName : undefined,
+    roastLevel: typeof raw.roastLevel === "string" ? raw.roastLevel : "中煎り",
+    roastery: typeof raw.roastery === "string" ? raw.roastery : "未入力",
+    overallRating,
+    foodPairing: typeof raw.foodPairing === "string" ? raw.foodPairing : undefined,
+    filterRinse: Boolean(raw.filterRinse),
+    rdtDone: Boolean(raw.rdtDone),
+    flavors,
+    aftertaste: typeof raw.aftertaste === "string" ? raw.aftertaste : "",
+    memo: typeof raw.memo === "string" ? raw.memo : ""
+  };
+}
+
+export function getLogOriginCountries(log: StoredBrewLog): string[] {
+  if (log.origins && log.origins.length > 0) {
+    const fromOrigins = log.origins
+      .map((origin) => origin.country)
+      .filter((country) => typeof country === "string" && country.trim() !== "");
+    if (fromOrigins.length > 0) {
+      return fromOrigins;
+    }
+  }
+  if (typeof log.originCountry === "string" && log.originCountry.trim() !== "") {
+    return [log.originCountry];
+  }
+  return [];
+}
+
+export function logMatchesCountryKey(log: StoredBrewLog, countryKey: string) {
+  const key = normalizeMapCountryName(countryKey);
+  return getLogOriginCountries(log).some(
+    (country) => normalizeMapCountryName(country) === key
+  );
+}
+
+/** ブラウザ上で履歴一覧と同じ集合を得る（未保存時はサンプルを返す） */
+export function loadBrewLogsFromStorage(): StoredBrewLog[] {
+  if (typeof window === "undefined") {
+    return [...SAMPLE_BREW_LOGS];
+  }
+  const raw = localStorage.getItem(BREW_LOG_STORAGE_KEY);
+  if (!raw) {
+    return [...SAMPLE_BREW_LOGS];
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [...SAMPLE_BREW_LOGS];
+    }
+    const coerced = parsed
+      .map((entry) => coerceStoredBrewLog(entry))
+      .filter((entry): entry is StoredBrewLog => entry !== null);
+    return coerced.length > 0 ? coerced : [...SAMPLE_BREW_LOGS];
+  } catch {
+    return [...SAMPLE_BREW_LOGS];
+  }
+}
+
+export function persistBrewLogs(logs: StoredBrewLog[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  localStorage.setItem(BREW_LOG_STORAGE_KEY, JSON.stringify(logs));
+}
+
 export const SAMPLE_BREW_LOGS: StoredBrewLog[] = [
   {
     id: 1,

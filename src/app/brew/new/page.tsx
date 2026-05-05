@@ -1,8 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { COFFEE_ORIGINS, ORIGIN_STORAGE_KEY } from "@/lib/coffeeOrigins";
-import { BREW_LOG_STORAGE_KEY, type StoredBrewLog } from "@/lib/brewLogStorage";
+import {
+  BREW_LOG_STORAGE_KEY,
+  loadBrewLogsFromStorage,
+  persistBrewLogs,
+  type StoredBrewLog
+} from "@/lib/brewLogStorage";
 
 const brewMethods = [
   "ハンドドリップ",
@@ -142,7 +149,21 @@ const flavorFamilies = [
   }
 ] as const;
 
-export default function NewBrewPage() {
+function familyIdsFromFlavors(flavors: string[]) {
+  const ids = flavorFamilies
+    .filter((family) => family.items.some((name) => flavors.includes(name)))
+    .map((family) => family.id);
+  return ids.length > 0 ? ids : [flavorFamilies[0].id];
+}
+
+function BrewNewPageContent() {
+  const searchParams = useSearchParams();
+  const editParam = searchParams.get("edit");
+  const editingId =
+    editParam != null && editParam.trim() !== "" && !Number.isNaN(Number(editParam))
+      ? Number(editParam)
+      : null;
+
   const [mode, setMode] = useState<"beginner" | "pro">("beginner");
   const [brewMethod, setBrewMethod] = useState<string>(brewMethods[0]);
   const [beanName, setBeanName] = useState<string>("");
@@ -166,9 +187,80 @@ export default function NewBrewPage() {
   const [filterRinse, setFilterRinse] = useState<boolean>(false);
   const [rdtDone, setRdtDone] = useState<boolean>(false);
   const [saveMessage, setSaveMessage] = useState<string>("");
+  const prevEditingIdRef = useRef<number | null>(null);
   const selectedFamilies = flavorFamilies.filter((family) =>
     selectedFamilyIds.includes(family.id)
   );
+
+  const resetToNewBrewDefaults = useCallback(() => {
+    setMode("beginner");
+    setBrewMethod(brewMethods[0]);
+    setBeanName("");
+    setRoastery("");
+    setRoastLevel(roastLevels[0]);
+    setBrewDate(new Date().toISOString().slice(0, 10));
+    setOriginEntries([{ id: Date.now(), country: COFFEE_ORIGINS[0].value, ratio: "" }]);
+    setSelectedFamilyIds([flavorFamilies[0].id]);
+    setSelectedFlavors([]);
+    setAftertaste("");
+    setMemo("");
+    setOverallRating(4);
+    setFoodPairing("");
+    setEquipmentName("");
+    setFilterRinse(false);
+    setRdtDone(false);
+    setSaveMessage("");
+  }, []);
+
+  useEffect(() => {
+    if (editingId == null) {
+      if (prevEditingIdRef.current != null) {
+        resetToNewBrewDefaults();
+      }
+      prevEditingIdRef.current = null;
+      return;
+    }
+    prevEditingIdRef.current = editingId;
+    const logs = loadBrewLogsFromStorage();
+    const log = logs.find((item) => item.id === editingId);
+    if (!log) {
+      setSaveMessage("指定の記録が見つかりませんでした。履歴から開き直してください。");
+      return;
+    }
+    setSaveMessage("");
+    setBrewMethod(brewMethods.includes(log.method) ? log.method : brewMethods[0]);
+    setBeanName(log.beanName === "未入力" ? "" : log.beanName);
+    setRoastery(log.roastery === "未入力" ? "" : log.roastery);
+    setRoastLevel(roastLevels.includes(log.roastLevel) ? log.roastLevel : roastLevels[0]);
+    setBrewDate(log.date);
+    const origins =
+      log.origins && log.origins.length > 0
+        ? log.origins.map((entry, index) => ({
+            id: Date.now() + index,
+            country: entry.country,
+            ratio: entry.ratio
+          }))
+        : [{ id: Date.now(), country: log.originCountry, ratio: "" }];
+    setOriginEntries(origins);
+    const flavors = log.flavors ?? [];
+    setSelectedFlavors(flavors);
+    setSelectedFamilyIds(familyIdsFromFlavors(flavors));
+    setAftertaste(log.aftertaste);
+    setMemo(log.memo);
+    setOverallRating(
+      log.overallRating >= 1 && log.overallRating <= 5 ? log.overallRating : 4
+    );
+    setFoodPairing(log.foodPairing ?? "");
+    setEquipmentName(log.equipmentName ?? "");
+    setFilterRinse(Boolean(log.filterRinse));
+    setRdtDone(Boolean(log.rdtDone));
+    const usePro =
+      Boolean(log.equipmentName) ||
+      Boolean(log.filterRinse) ||
+      Boolean(log.rdtDone) ||
+      flavors.length > 0;
+    setMode(usePro ? "pro" : "beginner");
+  }, [editingId, resetToNewBrewDefaults]);
 
   const toggleFlavor = (flavor: string) => {
     setSelectedFlavors((prev) =>
@@ -216,7 +308,7 @@ export default function NewBrewPage() {
       .filter((entry) => entry.country);
     const fallbackCountry = cleanedOrigins[0]?.country ?? COFFEE_ORIGINS[0].value;
     const nextLog: StoredBrewLog = {
-      id: Date.now(),
+      id: editingId ?? Date.now(),
       date: brewDate,
       beanName: beanName || "未入力",
       origins: cleanedOrigins,
@@ -234,9 +326,30 @@ export default function NewBrewPage() {
       memo
     };
 
-    const storedLogsRaw = localStorage.getItem(BREW_LOG_STORAGE_KEY);
-    const storedLogs = storedLogsRaw ? (JSON.parse(storedLogsRaw) as StoredBrewLog[]) : [];
-    localStorage.setItem(BREW_LOG_STORAGE_KEY, JSON.stringify([nextLog, ...storedLogs]));
+    if (editingId != null) {
+      const existing = loadBrewLogsFromStorage();
+      if (!existing.some((item) => item.id === editingId)) {
+        setSaveMessage("更新できませんでした。記録が見つかりません。");
+        return;
+      }
+      const updated = existing.map((item) =>
+        item.id === editingId ? { ...nextLog, id: editingId } : item
+      );
+      persistBrewLogs(updated);
+      setSaveMessage("記録を更新しました。");
+    } else {
+      const storedLogsRaw = localStorage.getItem(BREW_LOG_STORAGE_KEY);
+      const storedLogs = storedLogsRaw ? (JSON.parse(storedLogsRaw) as StoredBrewLog[]) : [];
+      persistBrewLogs([nextLog, ...storedLogs]);
+      setSaveMessage(
+        `記録を保存しました。${cleanedOrigins
+          .map(
+            (entry) =>
+              COFFEE_ORIGINS.find((item) => item.value === entry.country)?.label ?? entry.country
+          )
+          .join(" / ")} を産地コレクションに追加しました。`
+      );
+    }
 
     // Legacy key is kept for backward compatibility.
     const storedOriginsRaw = localStorage.getItem(ORIGIN_STORAGE_KEY);
@@ -247,27 +360,33 @@ export default function NewBrewPage() {
         Array.from(new Set([...storedOrigins, ...cleanedOrigins.map((item) => item.country)]))
       )
     );
-    setSaveMessage(
-      `記録を保存しました。${cleanedOrigins
-        .map(
-          (entry) =>
-            COFFEE_ORIGINS.find((item) => item.value === entry.country)?.label ?? entry.country
-        )
-        .join(" / ")} を産地コレクションに追加しました。`
-    );
   };
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 py-10 sm:py-14">
       <section className="rounded-3xl border border-amber-900/15 bg-white/85 p-7 shadow-xl shadow-amber-950/10 backdrop-blur-sm sm:p-10">
         <header>
-          <p className="text-sm font-semibold text-amber-800">抽出ログ作成</p>
-          <h1 className="mt-2 text-3xl font-bold text-amber-950 sm:text-4xl">
-            新しい抽出を記録
-          </h1>
-          <p className="mt-3 text-sm text-amber-900/80 sm:text-base">
-            抽出方法を選んで、あなたのモードに合わせた項目を入力してください。
-          </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-amber-800">
+                {editingId != null ? "抽出ログ編集" : "抽出ログ作成"}
+              </p>
+              <h1 className="mt-2 text-3xl font-bold text-amber-950 sm:text-4xl">
+                {editingId != null ? "記録を編集" : "新しい抽出を記録"}
+              </h1>
+              <p className="mt-3 text-sm text-amber-900/80 sm:text-base">
+                抽出方法を選んで、あなたのモードに合わせた項目を入力してください。
+              </p>
+            </div>
+            {editingId != null && (
+              <Link
+                href="/brew/new"
+                className="shrink-0 rounded-lg border border-amber-300 px-3 py-2 text-sm font-semibold text-amber-900 transition hover:bg-amber-100"
+              >
+                新規作成に切り替え
+              </Link>
+            )}
+          </div>
         </header>
 
         <form className="mt-8 space-y-8" onSubmit={handleSubmit}>
@@ -781,7 +900,7 @@ export default function NewBrewPage() {
             type="submit"
             className="w-full rounded-xl bg-amber-700 px-4 py-3 text-base font-semibold text-white transition hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
           >
-            記録を保存
+            {editingId != null ? "変更を保存（更新）" : "記録を保存"}
           </button>
           <p className="text-sm text-amber-900/80">
             保存した産地は「世界地図コレクション」でハイライトされます。
@@ -794,5 +913,19 @@ export default function NewBrewPage() {
         </form>
       </section>
     </main>
+  );
+}
+
+export default function NewBrewPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto w-full max-w-4xl px-6 py-10 sm:py-14">
+          <p className="text-sm text-amber-800">読み込み中...</p>
+        </main>
+      }
+    >
+      <BrewNewPageContent />
+    </Suspense>
   );
 }

@@ -33,6 +33,17 @@ const navItems: NavItem[] = [
     )
   },
   {
+    href: "/journal",
+    label: "ノート",
+    match: (path) => path.startsWith("/journal"),
+    icon: (
+      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor">
+        <path d="M6 4h10a2 2 0 0 1 2 2v14l-4-2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" strokeWidth="1.8" />
+        <path d="M8 9h8M8 12.5h5" strokeWidth="1.8" />
+      </svg>
+    )
+  },
+  {
     href: "/history",
     label: "カレンダー",
     match: (path) => path.startsWith("/history"),
@@ -68,11 +79,11 @@ const navItems: NavItem[] = [
 ];
 
 export default function AppTabBar() {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "/";
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-amber-900/15 bg-white/90 backdrop-blur">
-      <ul className="mx-auto grid max-w-5xl grid-cols-5">
+      <ul className="mx-auto grid max-w-5xl grid-cols-6">
         {navItems.map((item) => {
           const isActive = item.match(pathname);
           return (

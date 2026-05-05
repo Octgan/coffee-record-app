@@ -136,6 +136,12 @@ export default function DashboardPage() {
           抽出履歴カレンダーを見る
         </Link>
         <Link
+          href="/journal"
+          className="mt-3 block rounded-xl border border-amber-600 bg-white px-4 py-3 text-center text-base font-semibold text-amber-900 transition hover:bg-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
+        >
+          マイ・ノート（全記録）
+        </Link>
+        <Link
           href="/world-map"
           className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-amber-700 bg-white px-4 py-3 text-center text-base font-semibold text-amber-900 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
         >
