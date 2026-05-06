@@ -1,5 +1,8 @@
 export const BREW_LOG_STORAGE_KEY = "coffee-brew-logs";
 
+/** 同一タブ内でもリストを再同期するためのカスタムイベント（storage イベントは別タブのみ発火） */
+export const BREW_LOGS_UPDATED_EVENT = "coffee-brew-logs-updated";
+
 export type StoredBrewLog = {
   id: number;
   date: string;
@@ -106,6 +109,32 @@ export function logMatchesCountryKey(log: StoredBrewLog, countryKey: string) {
   );
 }
 
+/** ジャーナルなど一覧の1ページあたり件数 */
+export const BREW_LOG_JOURNAL_PAGE_SIZE = 10;
+
+/**
+ * ソート・フィルタ済みの配列から、UI に載せる1ページ分だけを切り出す。
+ * localStorage では生 JSON の読み込みは避けられないが、描画件数を抑えてパフォーマンスを保つ。
+ * Supabase 等へ移行する場合は、同じ page / pageSize で `.range(offset, offset+limit-1)` と
+ * 別途 `count` を取得し、ここはサーバー結果をそのまま渡す形に置き換える。
+ */
+export function sliceLogsPage<T>(
+  sortedLogs: T[],
+  page: number,
+  pageSize: number
+): { pageSlice: T[]; total: number; totalPages: number; clampedPage: number } {
+  const total = sortedLogs.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const clampedPage = Math.min(Math.max(1, Math.floor(page) || 1), totalPages);
+  const start = (clampedPage - 1) * pageSize;
+  return {
+    pageSlice: sortedLogs.slice(start, start + pageSize),
+    total,
+    totalPages,
+    clampedPage
+  };
+}
+
 /** ブラウザ上で履歴一覧と同じ集合を得る（未保存時はサンプルを返す） */
 export function loadBrewLogsFromStorage(): StoredBrewLog[] {
   if (typeof window === "undefined") {
@@ -134,6 +163,7 @@ export function persistBrewLogs(logs: StoredBrewLog[]) {
     return;
   }
   localStorage.setItem(BREW_LOG_STORAGE_KEY, JSON.stringify(logs));
+  window.dispatchEvent(new Event(BREW_LOGS_UPDATED_EVENT));
 }
 
 export const SAMPLE_BREW_LOGS: StoredBrewLog[] = [

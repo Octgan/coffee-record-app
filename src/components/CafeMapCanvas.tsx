@@ -14,8 +14,6 @@ import {
 import "leaflet/dist/leaflet.css";
 import type { CafeRecord } from "@/lib/cafeMapStorage";
 
-type DisplayCafeRecord = CafeRecord & { isOwn: boolean };
-
 function MapViewSync({ center, zoom }: { center: [number, number]; zoom: number }) {
   const map = useMap();
   useEffect(() => {
@@ -38,13 +36,11 @@ function MapClickLayer({
 }
 
 type CafeMapCanvasProps = {
-  records: DisplayCafeRecord[];
+  records: CafeRecord[];
   mapCenter: [number, number];
   mapZoom?: number;
   userPosition: [number, number] | null;
   registrationCoords: [number, number] | null;
-  ownRecordIds: number[];
-  onToggleRecordVisibility: (recordId: number) => void;
   onMapClick: (lat: number, lng: number) => void;
 };
 
@@ -54,13 +50,10 @@ export default function CafeMapCanvas({
   mapZoom = 13,
   userPosition,
   registrationCoords,
-  ownRecordIds,
-  onToggleRecordVisibility,
   onMapClick
 }: CafeMapCanvasProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [coffeeIcon, setCoffeeIcon] = useState<DivIcon | null>(null);
-  const [publicIcon, setPublicIcon] = useState<DivIcon | null>(null);
   const [userIcon, setUserIcon] = useState<DivIcon | null>(null);
   const [registrationIcon, setRegistrationIcon] = useState<DivIcon | null>(null);
 
@@ -84,12 +77,6 @@ export default function CafeMapCanvas({
         iconSize: [36, 36],
         iconAnchor: [18, 18]
       });
-      const publicCup = leaflet.divIcon({
-        className: "",
-        html: `<div class="cafe-pin-icon-public fade-in-pin">☕</div>`,
-        iconSize: [36, 36],
-        iconAnchor: [18, 18]
-      });
       const me = leaflet.divIcon({
         className: "",
         html: `<div class="user-location-pin"><span class="user-location-ripple"></span><span class="user-location-dot"></span></div>`,
@@ -103,7 +90,6 @@ export default function CafeMapCanvas({
         iconAnchor: [20, 36]
       });
       setCoffeeIcon(cup);
-      setPublicIcon(publicCup);
       setUserIcon(me);
       setRegistrationIcon(reg);
     });
@@ -135,13 +121,8 @@ export default function CafeMapCanvas({
         />
 
         {coffeeIcon &&
-          publicIcon &&
           records.map((record) => (
-            <Marker
-              key={record.id}
-              position={[record.lat, record.lng]}
-              icon={record.isOwn ? coffeeIcon : publicIcon}
-            >
+            <Marker key={record.id} position={[record.lat, record.lng]} icon={coffeeIcon}>
               <Popup>
                 <div className="w-52 space-y-2">
                   <img
@@ -151,30 +132,12 @@ export default function CafeMapCanvas({
                   />
                   <p className="font-semibold text-amber-900">{record.cafeName}</p>
                   <p className="text-xs text-amber-800">{record.date}</p>
-                  <p className="text-xs text-amber-900/80">
-                    投稿者: {record.authorNickname || "あなた"}
-                  </p>
-                  <p className="text-xs font-semibold text-amber-700">
-                    {record.isOwn ? "あなたの記録" : "みんなの公開記録"}
-                  </p>
                   <p className="text-sm">評価: {"★".repeat(record.rating)}</p>
-                  <p className="text-xs font-semibold text-amber-800">
-                    {record.isPublic ? "公開中" : "非公開（自分のみ）"}
-                  </p>
                   <p className="text-sm">豆: {record.bean}</p>
                   <p className="text-sm">
                     お供: {record.foodPairing ? `🍰 ${record.foodPairing}` : "未入力"}
                   </p>
                   <p className="text-sm">{record.note}</p>
-                  {ownRecordIds.includes(record.id) && (
-                    <button
-                      type="button"
-                      onClick={() => onToggleRecordVisibility(record.id)}
-                      className="w-full rounded-md bg-amber-700 px-2 py-1 text-xs font-semibold text-white transition hover:bg-amber-800"
-                    >
-                      {record.isPublic ? "非公開にする" : "公開する"}
-                    </button>
-                  )}
                 </div>
               </Popup>
             </Marker>
@@ -227,22 +190,6 @@ export default function CafeMapCanvas({
           box-shadow:
             0 14px 24px rgba(61, 22, 12, 0.5),
             0 4px 10px rgba(61, 22, 12, 0.35);
-        }
-
-        .cafe-pin-icon-public {
-          width: 38px;
-          height: 38px;
-          border-radius: 9999px;
-          background: #c58a24;
-          border: 2px solid rgba(255, 255, 255, 0.95);
-          color: #fff;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 16px;
-          box-shadow:
-            0 14px 24px rgba(98, 63, 15, 0.45),
-            0 4px 10px rgba(98, 63, 15, 0.32);
         }
 
         .user-location-pin {

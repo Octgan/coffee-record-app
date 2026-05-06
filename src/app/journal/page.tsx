@@ -1,9 +1,15 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { JournalClient } from "./JournalClient";
 import { journalShell } from "./shell";
 
 /** useSearchParams 利用時の静的生成エラー / 500 を避ける */
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "My coffee note",
+  description: "これまでの抽出記録を振り返るマイ・ノート。"
+};
 
 export default function JournalPage() {
   return (

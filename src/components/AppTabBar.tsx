@@ -16,7 +16,7 @@ const navItems: NavItem[] = [
     label: "ホーム",
     match: (path) => path === "/",
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor">
+      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor">
         <path d="M3 10.5 12 3l9 7.5" strokeWidth="1.8" />
         <path d="M6.5 9.5V21h11V9.5" strokeWidth="1.8" />
       </svg>
@@ -27,7 +27,7 @@ const navItems: NavItem[] = [
     label: "記録する",
     match: (path) => path.startsWith("/brew"),
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor">
+      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor">
         <path d="M12 5v14M5 12h14" strokeWidth="1.8" />
       </svg>
     )
@@ -37,7 +37,7 @@ const navItems: NavItem[] = [
     label: "ノート",
     match: (path) => path.startsWith("/journal"),
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor">
+      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor">
         <path d="M6 4h10a2 2 0 0 1 2 2v14l-4-2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" strokeWidth="1.8" />
         <path d="M8 9h8M8 12.5h5" strokeWidth="1.8" />
       </svg>
@@ -48,7 +48,7 @@ const navItems: NavItem[] = [
     label: "カレンダー",
     match: (path) => path.startsWith("/history"),
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor">
+      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor">
         <rect x="3.5" y="5.5" width="17" height="15" rx="2" strokeWidth="1.8" />
         <path d="M7.5 3.5v4M16.5 3.5v4M3.5 9h17" strokeWidth="1.8" />
       </svg>
@@ -59,7 +59,7 @@ const navItems: NavItem[] = [
     label: "世界地図",
     match: (path) => path.startsWith("/world-map"),
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor">
+      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor">
         <circle cx="12" cy="12" r="9" strokeWidth="1.8" />
         <path d="M3 12h18M12 3a13 13 0 0 1 0 18M12 3a13 13 0 0 0 0 18" strokeWidth="1.8" />
       </svg>
@@ -70,7 +70,7 @@ const navItems: NavItem[] = [
     label: "カフェマップ",
     match: (path) => path.startsWith("/cafe-map"),
     icon: (
-      <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor">
+      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor">
         <path d="M12 21s6-5.6 6-10a6 6 0 1 0-12 0c0 4.4 6 10 6 10Z" strokeWidth="1.8" />
         <circle cx="12" cy="11" r="2.2" strokeWidth="1.8" />
       </svg>
@@ -82,22 +82,27 @@ export default function AppTabBar() {
   const pathname = usePathname() ?? "/";
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-amber-900/15 bg-white/90 backdrop-blur">
-      <ul className="mx-auto grid max-w-5xl grid-cols-6">
+    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-amber-900/15 bg-white/90 backdrop-blur pb-[env(safe-area-inset-bottom,0px)]">
+      <ul
+        className="mx-auto grid w-full max-w-5xl min-w-0"
+        style={{
+          gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))`
+        }}
+      >
         {navItems.map((item) => {
           const isActive = item.match(pathname);
           return (
-            <li key={item.href}>
+            <li key={item.href} className="min-w-0">
               <Link
                 href={item.href}
-                className={`flex flex-col items-center gap-1 py-3 text-xs font-semibold transition ${
+                className={`flex min-h-[48px] min-w-0 flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 text-center text-[10px] font-semibold leading-none transition max-[360px]:text-[9px] ${
                   isActive
                     ? "text-amber-700"
                     : "text-amber-900/65 hover:bg-amber-100/60 hover:text-amber-900"
                 }`}
               >
                 {item.icon}
-                <span>{item.label}</span>
+                <span className="w-full min-w-0 whitespace-nowrap">{item.label}</span>
               </Link>
             </li>
           );

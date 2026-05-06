@@ -3,10 +3,9 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  CAFE_PROFILE_STORAGE_KEY,
   CAFE_MAP_STORAGE_KEY,
-  MOCK_PUBLIC_CAFE_RECORDS,
   SAMPLE_CAFE_RECORDS,
+  coerceCafeRecords,
   persistCafeRecords,
   type CafeRecord
 } from "@/lib/cafeMapStorage";
@@ -51,39 +50,23 @@ export default function CafeMapPage() {
   /** 保存するスポットの座標（現在地取得 or 地図タップで決まる。名前とは独立） */
   const [registrationCoords, setRegistrationCoords] = useState<[number, number] | null>(null);
   const [pairing, setPairing] = useState("");
-  const [isPublicRecord, setIsPublicRecord] = useState(false);
-  const [nickname, setNickname] = useState("Coffee Lover");
-  const [displayMode, setDisplayMode] = useState<"mine" | "community" | "all">("all");
   const [editingDraft, setEditingDraft] = useState<CafeRecord | null>(null);
 
   useEffect(() => {
     const storedRaw = localStorage.getItem(CAFE_MAP_STORAGE_KEY);
-    const profileRaw = localStorage.getItem(CAFE_PROFILE_STORAGE_KEY);
-    if (profileRaw) {
-      try {
-        const parsedProfile = JSON.parse(profileRaw) as { nickname?: string };
-        if (parsedProfile.nickname) {
-          setNickname(parsedProfile.nickname);
-        }
-      } catch {
-        setNickname("Coffee Lover");
-      }
-    }
     if (storedRaw) {
       try {
-        const parsed = JSON.parse(storedRaw) as CafeRecord[];
-        if (parsed.length > 0) {
-          setRecords(parsed);
+        const parsed = JSON.parse(storedRaw) as unknown;
+        const normalized = coerceCafeRecords(parsed);
+        if (normalized.length > 0) {
+          setRecords(normalized);
+          persistCafeRecords(normalized);
         }
       } catch {
         setRecords(SAMPLE_CAFE_RECORDS);
       }
     }
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem(CAFE_PROFILE_STORAGE_KEY, JSON.stringify({ nickname }));
-  }, [nickname]);
 
   const requestCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -142,17 +125,7 @@ export default function CafeMapPage() {
     setCandidateName(hint.nameSuggestion ? `マイスポット（${hint.nameSuggestion}）` : "");
     setCandidatePlace(hint.placeLabel);
   }, []);
-  const mapRecords = useMemo(() => {
-    const own = records.map((record) => ({ ...record, isOwn: true }));
-    const others = MOCK_PUBLIC_CAFE_RECORDS.map((record) => ({ ...record, isOwn: false }));
-    if (displayMode === "mine") {
-      return own;
-    }
-    if (displayMode === "community") {
-      return others.filter((record) => record.isPublic);
-    }
-    return [...own, ...others];
-  }, [records, displayMode]);
+
   const saveCurrentSpotRecord = () => {
     if (!registrationCoords) {
       setLocationMessage("先に地図をタップするか、「＋ ここで記録する」で位置を決めてください。");
@@ -169,8 +142,6 @@ export default function CafeMapPage() {
       bean: "未入力",
       note: candidatePlace || "現在地から記録",
       foodPairing: pairing,
-      isPublic: isPublicRecord,
-      authorNickname: nickname,
       photoUrl:
         "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=700&q=80"
     };
@@ -178,13 +149,6 @@ export default function CafeMapPage() {
     setRecords(updated);
     persistCafeRecords(updated);
     setLocationMessage("スポットを保存しました（ブラウザに保存されています）。");
-  };
-  const toggleRecordVisibility = (recordId: number) => {
-    const updated = records.map((record) =>
-      record.id === recordId ? { ...record, isPublic: !record.isPublic } : record
-    );
-    setRecords(updated);
-    persistCafeRecords(updated);
   };
 
   const handleDeleteRecord = (record: CafeRecord) => {
@@ -239,69 +203,19 @@ export default function CafeMapPage() {
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="relative overflow-hidden rounded-2xl border border-amber-200">
-            <div className="absolute right-3 top-3 z-[500] flex rounded-xl border border-amber-200 bg-white/95 p-1 shadow-md">
-              <button
-                type="button"
-                onClick={() => setDisplayMode("mine")}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  displayMode === "mine"
-                    ? "bg-amber-700 text-white"
-                    : "text-amber-900 hover:bg-amber-100"
-                }`}
-              >
-                自分のみ
-              </button>
-              <button
-                type="button"
-                onClick={() => setDisplayMode("community")}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  displayMode === "community"
-                    ? "bg-amber-700 text-white"
-                    : "text-amber-900 hover:bg-amber-100"
-                }`}
-              >
-                みんなの記録
-              </button>
-              <button
-                type="button"
-                onClick={() => setDisplayMode("all")}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                  displayMode === "all"
-                    ? "bg-amber-700 text-white"
-                    : "text-amber-900 hover:bg-amber-100"
-                }`}
-              >
-                すべて表示
-              </button>
-            </div>
             <p className="pointer-events-none absolute bottom-3 left-3 right-3 z-[400] rounded-xl border border-amber-200/80 bg-white/90 px-3 py-2 text-center text-xs text-amber-900/90 shadow sm:left-auto sm:right-3 sm:max-w-sm sm:text-left">
               地図をタップするとその地点に登録ピンが立ちます。位置はそのまま、右の欄で名前だけ変えて保存できます。
             </p>
             <CafeMapCanvas
-              records={mapRecords}
+              records={records}
               mapCenter={mapCenter}
               userPosition={userPosition}
               registrationCoords={registrationCoords}
-              ownRecordIds={records.map((record) => record.id)}
-              onToggleRecordVisibility={toggleRecordVisibility}
               onMapClick={handleMapSelectSpot}
             />
           </div>
 
           <aside className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
-            <div className="mb-4 rounded-xl border border-amber-200 bg-white p-3">
-              <p className="text-xs font-semibold text-amber-700">ニックネーム設定</p>
-              <input
-                type="text"
-                value={nickname}
-                onChange={(event) => setNickname(event.target.value)}
-                className="mt-2 w-full rounded-lg border border-amber-200 px-3 py-2 text-sm text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                placeholder="表示名を入力"
-              />
-              <p className="mt-1 text-xs text-amber-900/65">
-                公開記録にこのニックネームが表示されます。
-              </p>
-            </div>
             <h2 className="text-base font-semibold text-amber-900">スポット登録</h2>
             <p className="mt-2 text-sm text-amber-900/80">{locationMessage}</p>
             <p className="mt-1 text-xs text-amber-900/60">{registrationLabel}</p>
@@ -360,18 +274,6 @@ export default function CafeMapPage() {
                 >
                   この内容でカフェ記録を保存
                 </button>
-                <label className="mt-3 flex items-center gap-2 text-sm text-amber-900">
-                  <input
-                    type="checkbox"
-                    checked={isPublicRecord}
-                    onChange={(event) => setIsPublicRecord(event.target.checked)}
-                    className="h-4 w-4 rounded border-amber-300 text-amber-700 focus:ring-amber-400"
-                  />
-                  この記録を公開する
-                </label>
-                <p className="mt-1 text-xs text-amber-900/65">
-                  デフォルトは非公開です。公開するとコミュニティマップに表示されます。
-                </p>
               </div>
             </div>
 
@@ -405,15 +307,6 @@ export default function CafeMapPage() {
                       削除
                     </button>
                   </div>
-                  <label className="mt-2 flex items-center gap-2 text-xs text-amber-800">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(record.isPublic)}
-                      onChange={() => toggleRecordVisibility(record.id)}
-                      className="h-4 w-4 rounded border-amber-300 text-amber-700 focus:ring-amber-400"
-                    />
-                    公開する
-                  </label>
                 </li>
               ))}
             </ul>
@@ -552,19 +445,6 @@ export default function CafeMapPage() {
               <p className="text-xs text-amber-800">
                 緯度 {editingDraft.lat.toFixed(5)} / 経度 {editingDraft.lng.toFixed(5)}
               </p>
-              <label className="flex items-center gap-2 text-amber-900">
-                <input
-                  type="checkbox"
-                  checked={Boolean(editingDraft.isPublic)}
-                  onChange={(event) =>
-                    setEditingDraft((d) =>
-                      d ? { ...d, isPublic: event.target.checked } : d
-                    )
-                  }
-                  className="h-4 w-4 rounded border-amber-300 text-amber-700 focus:ring-amber-400"
-                />
-                この記録を公開する
-              </label>
             </div>
 
             <div className="mt-6 flex flex-wrap gap-2">

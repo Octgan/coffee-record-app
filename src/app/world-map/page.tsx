@@ -115,9 +115,6 @@ export default function WorldMapPage() {
             <span className="inline-block h-3 w-3 rounded-full bg-amber-100" />
             未記録
           </div>
-          <p className="font-semibold text-amber-900">
-            コンプリート状況: {visitedOrigins.length} / {COFFEE_ORIGINS.length}
-          </p>
         </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">

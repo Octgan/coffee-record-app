@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { COFFEE_ORIGINS, ORIGIN_STORAGE_KEY } from "@/lib/coffeeOrigins";
 import {
-  BREW_LOG_STORAGE_KEY,
   loadBrewLogsFromStorage,
   persistBrewLogs,
   type StoredBrewLog
@@ -187,6 +186,9 @@ function BrewNewPageContent() {
   const [filterRinse, setFilterRinse] = useState<boolean>(false);
   const [rdtDone, setRdtDone] = useState<boolean>(false);
   const [saveMessage, setSaveMessage] = useState<string>("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [formDirty, setFormDirty] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const prevEditingIdRef = useRef<number | null>(null);
   const selectedFamilies = flavorFamilies.filter((family) =>
     selectedFamilyIds.includes(family.id)
@@ -210,6 +212,7 @@ function BrewNewPageContent() {
     setFilterRinse(false);
     setRdtDone(false);
     setSaveMessage("");
+    setFormDirty(false);
   }, []);
 
   useEffect(() => {
@@ -260,7 +263,34 @@ function BrewNewPageContent() {
       Boolean(log.rdtDone) ||
       flavors.length > 0;
     setMode(usePro ? "pro" : "beginner");
+    setFormDirty(false);
   }, [editingId, resetToNewBrewDefaults]);
+
+  useEffect(() => {
+    const el = formRef.current;
+    if (!el) {
+      return;
+    }
+    const markDirty = () => setFormDirty(true);
+    el.addEventListener("input", markDirty, true);
+    el.addEventListener("change", markDirty, true);
+    return () => {
+      el.removeEventListener("input", markDirty, true);
+      el.removeEventListener("change", markDirty, true);
+    };
+  }, []);
+
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!formDirty || isSaving) {
+        return;
+      }
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [formDirty, isSaving]);
 
   const toggleFlavor = (flavor: string) => {
     setSelectedFlavors((prev) =>
@@ -298,8 +328,11 @@ function BrewNewPageContent() {
       prev.map((entry) => (entry.id === id ? { ...entry, [key]: value } : entry))
     );
   };
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (isSaving) {
+      return;
+    }
     const cleanedOrigins = originEntries
       .map((entry) => ({
         country: entry.country,
@@ -326,40 +359,63 @@ function BrewNewPageContent() {
       memo
     };
 
-    if (editingId != null) {
-      const existing = loadBrewLogsFromStorage();
-      if (!existing.some((item) => item.id === editingId)) {
-        setSaveMessage("更新できませんでした。記録が見つかりません。");
-        return;
-      }
-      const updated = existing.map((item) =>
-        item.id === editingId ? { ...nextLog, id: editingId } : item
-      );
-      persistBrewLogs(updated);
-      setSaveMessage("記録を更新しました。");
-    } else {
-      const storedLogsRaw = localStorage.getItem(BREW_LOG_STORAGE_KEY);
-      const storedLogs = storedLogsRaw ? (JSON.parse(storedLogsRaw) as StoredBrewLog[]) : [];
-      persistBrewLogs([nextLog, ...storedLogs]);
-      setSaveMessage(
-        `記録を保存しました。${cleanedOrigins
-          .map(
-            (entry) =>
-              COFFEE_ORIGINS.find((item) => item.value === entry.country)?.label ?? entry.country
-          )
-          .join(" / ")} を産地コレクションに追加しました。`
-      );
-    }
+    setIsSaving(true);
+    setSaveMessage("");
+    try {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => resolve());
+      });
 
-    // Legacy key is kept for backward compatibility.
-    const storedOriginsRaw = localStorage.getItem(ORIGIN_STORAGE_KEY);
-    const storedOrigins = storedOriginsRaw ? (JSON.parse(storedOriginsRaw) as string[]) : [];
-    localStorage.setItem(
-      ORIGIN_STORAGE_KEY,
-      JSON.stringify(
-        Array.from(new Set([...storedOrigins, ...cleanedOrigins.map((item) => item.country)]))
-      )
-    );
+      if (editingId != null) {
+        const existing = loadBrewLogsFromStorage();
+        if (!existing.some((item) => item.id === editingId)) {
+          setSaveMessage("更新できませんでした。記録が見つかりません。");
+          return;
+        }
+        const updated = existing.map((item) =>
+          item.id === editingId ? { ...nextLog, id: editingId } : item
+        );
+        persistBrewLogs(updated);
+        const verify = loadBrewLogsFromStorage();
+        const row = verify.find((item) => item.id === editingId);
+        if (!row) {
+          setSaveMessage("更新の反映を確認できませんでした。マイ・ノートを開き直してください。");
+          return;
+        }
+        setSaveMessage("記録を更新しました。");
+      } else {
+        const storedLogs = loadBrewLogsFromStorage();
+        persistBrewLogs([nextLog, ...storedLogs]);
+        const verify = loadBrewLogsFromStorage();
+        if (!verify.some((item) => item.id === nextLog.id)) {
+          setSaveMessage("保存の反映を確認できませんでした。もう一度お試しください。");
+          return;
+        }
+        setSaveMessage(
+          `記録を保存しました。${cleanedOrigins
+            .map(
+              (entry) =>
+                COFFEE_ORIGINS.find((item) => item.value === entry.country)?.label ??
+                entry.country
+            )
+            .join(" / ")} を産地コレクションに追加しました。`
+        );
+      }
+
+      const storedOriginsRaw = localStorage.getItem(ORIGIN_STORAGE_KEY);
+      const storedOrigins = storedOriginsRaw ? (JSON.parse(storedOriginsRaw) as string[]) : [];
+      localStorage.setItem(
+        ORIGIN_STORAGE_KEY,
+        JSON.stringify(
+          Array.from(new Set([...storedOrigins, ...cleanedOrigins.map((item) => item.country)]))
+        )
+      );
+      setFormDirty(false);
+    } catch {
+      setSaveMessage("保存中にエラーが発生しました。");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -389,7 +445,7 @@ function BrewNewPageContent() {
           </div>
         </header>
 
-        <form className="mt-8 space-y-8" onSubmit={handleSubmit}>
+        <form ref={formRef} className="mt-8 space-y-8" onSubmit={handleSubmit}>
           <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
             <label className="block text-sm font-semibold text-amber-900">抽出方法</label>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -552,32 +608,44 @@ function BrewNewPageContent() {
           </div>
 
           {mode === "beginner" ? (
-            <div className="grid gap-5 sm:grid-cols-3">
-              {["苦味", "酸味", "コク"].map((item) => (
-                <fieldset
-                  key={item}
-                  className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4"
-                >
-                  <legend className="text-sm font-semibold text-amber-900">{item}</legend>
-                  <div className="mt-3 flex gap-2">
-                    {stars.map((star) => (
-                      <label
-                        key={`${item}-${star}`}
-                        className="cursor-pointer text-xl text-amber-600"
-                      >
-                        <input
-                          type="radio"
-                          name={item}
-                          value={star}
-                          className="sr-only"
-                          defaultChecked={star === 3}
-                        />
-                        ★
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-              ))}
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5 sm:p-6">
+              <p className="text-sm font-semibold text-amber-900">今日の一杯の評価</p>
+              <p className="mt-1.5 text-xs leading-relaxed text-amber-900/75 sm:text-sm">
+                苦味・酸味・コクのバランスや好みを、総合的な満足度として星1〜5で選べます。
+              </p>
+              <div
+                className="mt-5 flex max-w-md flex-wrap items-center justify-center gap-2 sm:mx-auto sm:gap-2.5"
+                role="radiogroup"
+                aria-label="評価を1から5で選択"
+              >
+                {stars.map((star) => {
+                  const filled = star <= overallRating;
+                  return (
+                    <button
+                      key={star}
+                      type="button"
+                      role="radio"
+                      aria-checked={overallRating === star}
+                      aria-label={`${star} つ星`}
+                      onClick={() => setOverallRating(star)}
+                      className={`flex h-12 min-h-[48px] w-12 min-w-[48px] shrink-0 items-center justify-center rounded-xl text-2xl leading-none transition sm:h-14 sm:min-h-[56px] sm:w-14 sm:min-w-[56px] sm:text-3xl ${
+                        filled
+                          ? "text-amber-600 shadow-sm ring-2 ring-amber-500/35"
+                          : "text-amber-200/55 hover:text-amber-400/90"
+                      } focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-amber-50/80`}
+                    >
+                      ★
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-4 text-center text-sm font-medium text-amber-900">
+                選択中:{" "}
+                <span className="inline-flex min-w-[2.5rem] justify-center tabular-nums">
+                  {overallRating}
+                </span>{" "}
+                / 5
+              </p>
             </div>
           ) : (
             <div className="space-y-6">
@@ -629,23 +697,23 @@ function BrewNewPageContent() {
                       placeholder="例: Hario V60 / Fellow Stagg EKG"
                     />
                   </label>
-                  <label className="flex items-center gap-3 rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-medium text-amber-900">
+                  <label className="flex min-h-[2.75rem] items-center gap-3 rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-sm font-medium text-amber-900">
                     <input
                       type="checkbox"
                       checked={filterRinse}
                       onChange={(event) => setFilterRinse(event.target.checked)}
-                      className="h-4 w-4 rounded border-amber-300 text-amber-700 focus:ring-amber-400"
+                      className="h-4 w-4 shrink-0 rounded border-amber-300 text-amber-700 focus:ring-amber-400"
                     />
                     フィルターリンス（あり）
                   </label>
-                  <label className="flex items-center gap-3 rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-medium text-amber-900">
+                  <label className="flex min-h-[2.75rem] items-center gap-3 rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-sm font-medium text-amber-900">
                     <input
                       type="checkbox"
                       checked={rdtDone}
                       onChange={(event) => setRdtDone(event.target.checked)}
-                      className="h-4 w-4 rounded border-amber-300 text-amber-700 focus:ring-amber-400"
+                      className="h-4 w-4 shrink-0 rounded border-amber-300 text-amber-700 focus:ring-amber-400"
                     />
-                    RDTをおこなった
+                    RTD
                   </label>
                 </div>
               </details>
@@ -873,7 +941,7 @@ function BrewNewPageContent() {
                     </select>
                   </label>
                   <label className="flex flex-col gap-2 text-sm font-medium text-amber-900">
-                    アフタータスト
+                    アフターテイスト
                     <input
                       type="text"
                       value={aftertaste}
@@ -898,9 +966,14 @@ function BrewNewPageContent() {
 
           <button
             type="submit"
-            className="w-full rounded-xl bg-amber-700 px-4 py-3 text-base font-semibold text-white transition hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
+            disabled={isSaving}
+            className="w-full rounded-xl bg-amber-700 px-4 py-3 text-base font-semibold text-white transition hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {editingId != null ? "変更を保存（更新）" : "記録を保存"}
+            {isSaving
+              ? "保存中…"
+              : editingId != null
+                ? "変更を保存（更新）"
+                : "記録を保存"}
           </button>
           <p className="text-sm text-amber-900/80">
             保存した産地は「世界地図コレクション」でハイライトされます。
