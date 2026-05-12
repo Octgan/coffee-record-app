@@ -1,9 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { compressImageFileForUpload } from "@/lib/compressImageForUpload";
 import {
   CAFE_MAP_STORAGE_KEY,
+  CAFE_MAP_STORAGE_UPDATED_EVENT,
   SAMPLE_CAFE_RECORDS,
   coerceCafeRecords,
   persistCafeRecords,
@@ -15,6 +18,7 @@ const CafeMapCanvas = dynamic(() => import("@/components/CafeMapCanvas"), {
 });
 const defaultCenter: [number, number] = [35.6804, 139.769];
 const pairingTags = ["ケーキ", "スコーン", "チョコ", "クッキー", "タルト"];
+const CAFE_PHOTO_MAX_BYTES = 6 * 1024 * 1024;
 
 async function reverseGeocodeSuggestion(lat: number, lng: number) {
   try {
@@ -40,17 +44,87 @@ async function reverseGeocodeSuggestion(lat: number, lng: number) {
 }
 
 export default function CafeMapPage() {
+  const router = useRouter();
   const [records, setRecords] = useState<CafeRecord[]>(SAMPLE_CAFE_RECORDS);
   const [userPosition, setUserPosition] = useState<[number, number] | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>(defaultCenter);
   const [isLocating, setIsLocating] = useState(false);
-  const [locationMessage, setLocationMessage] = useState("位置情報を取得していません。");
+  const [locationMessage, setLocationMessage] = useState(
+    "地図をタップするか「＋ ここで記録する」で、抽出の詳細記録へ進みます。"
+  );
   const [candidateName, setCandidateName] = useState("");
   const [candidatePlace, setCandidatePlace] = useState("");
   /** 保存するスポットの座標（現在地取得 or 地図タップで決まる。名前とは独立） */
   const [registrationCoords, setRegistrationCoords] = useState<[number, number] | null>(null);
   const [pairing, setPairing] = useState("");
   const [editingDraft, setEditingDraft] = useState<CafeRecord | null>(null);
+  const cafePhotoInputRef = useRef<HTMLInputElement>(null);
+  const [cafePhotoUploading, setCafePhotoUploading] = useState(false);
+  const [cafePhotoUploadError, setCafePhotoUploadError] = useState<string | null>(null);
+
+  const handleCafePhotoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.target;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) {
+      return;
+    }
+    if (!editingDraft) {
+      return;
+    }
+
+    setCafePhotoUploadError(null);
+    setCafePhotoUploading(true);
+    try {
+      let uploadBlob: Blob;
+      let uploadName = file.name?.trim() || "photo";
+
+      try {
+        uploadBlob = await compressImageFileForUpload(file);
+        uploadName = uploadName.replace(/\.[^.]+$/i, "") + ".jpg";
+      } catch {
+        const allowed =
+          file.type === "image/jpeg" ||
+          file.type === "image/png" ||
+          file.type === "image/webp" ||
+          file.type === "image/gif";
+        if (!allowed) {
+          throw new Error(
+            "この画像は自動縮小できませんでした。写真アプリで JPEG に書き出してから選び直してください。"
+          );
+        }
+        if (file.size > CAFE_PHOTO_MAX_BYTES) {
+          throw new Error("画像が大きすぎます（最大 6MB）。別の写真をお試しください。");
+        }
+        uploadBlob = file;
+      }
+
+      if (uploadBlob.size > CAFE_PHOTO_MAX_BYTES) {
+        throw new Error("画像が大きすぎます（最大 6MB）。別の写真をお試しください。");
+      }
+
+      const formData = new FormData();
+      formData.append("file", uploadBlob, uploadName.endsWith(".jpg") ? uploadName : `${uploadName}.jpg`);
+
+      const response = await fetch("/api/cafe-photo", { method: "POST", body: formData });
+      const payload = (await response.json()) as { url?: string; error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "アップロードに失敗しました。");
+      }
+      if (!payload.url) {
+        throw new Error("画像 URL を取得できませんでした。");
+      }
+      setEditingDraft((draft) => (draft ? { ...draft, photoUrl: payload.url! } : draft));
+    } catch (err) {
+      setCafePhotoUploadError(err instanceof Error ? err.message : "エラーが発生しました。");
+    } finally {
+      setCafePhotoUploading(false);
+    }
+  };
+
+  useEffect(() => {
+    setCafePhotoUploadError(null);
+  }, [editingDraft?.id]);
 
   useEffect(() => {
     const storedRaw = localStorage.getItem(CAFE_MAP_STORAGE_KEY);
@@ -68,41 +142,96 @@ export default function CafeMapPage() {
     }
   }, []);
 
-  const requestCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      setLocationMessage("このブラウザは位置情報取得に対応していません。");
-      return;
-    }
+  useEffect(() => {
+    const reloadFromStorage = () => {
+      const storedRaw = localStorage.getItem(CAFE_MAP_STORAGE_KEY);
+      if (!storedRaw) {
+        return;
+      }
+      try {
+        const normalized = coerceCafeRecords(JSON.parse(storedRaw) as unknown);
+        if (normalized.length > 0) {
+          setRecords(normalized);
+        }
+      } catch {
+        /* keep current */
+      }
+    };
+    window.addEventListener(CAFE_MAP_STORAGE_UPDATED_EVENT, reloadFromStorage);
+    return () => window.removeEventListener(CAFE_MAP_STORAGE_UPDATED_EVENT, reloadFromStorage);
+  }, []);
 
-    setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        const nextPos: [number, number] = [lat, lng];
-        setUserPosition(nextPos);
-        setMapCenter(nextPos);
-        setRegistrationCoords(nextPos);
-        setLocationMessage("現在地を取得しました。右の「スポット名」で好きな名前に編集して保存できます。");
+  const navigateToBrewFromHere = useCallback(async () => {
+    let lat: number;
+    let lng: number;
+    let name = candidateName.trim();
+    let place = candidatePlace;
 
+    if (registrationCoords) {
+      lat = registrationCoords[0];
+      lng = registrationCoords[1];
+      if (!name || !place) {
         try {
           const hint = await reverseGeocodeSuggestion(lat, lng);
-          setCandidateName(hint.nameSuggestion ? `お気に入りスポット（${hint.nameSuggestion}）` : "");
-          setCandidatePlace(hint.placeLabel);
+          if (!name) {
+            name = hint.nameSuggestion ? `マイスポット（${hint.nameSuggestion}）` : "";
+          }
+          if (!place) {
+            place = hint.placeLabel;
+          }
         } catch {
-          setCandidateName("");
-          setCandidatePlace(`緯度 ${lat.toFixed(4)}, 経度 ${lng.toFixed(4)}`);
-        } finally {
-          setIsLocating(false);
+          /* keep */
         }
-      },
-      () => {
-        setLocationMessage("位置情報の取得に失敗しました。許可設定をご確認ください。");
+      }
+    } else {
+      if (!navigator.geolocation) {
+        setLocationMessage("位置情報に対応していません。地図をタップして場所を指定してください。");
+        return;
+      }
+      setIsLocating(true);
+      try {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 12000
+          });
+        });
+        lat = position.coords.latitude;
+        lng = position.coords.longitude;
+        setUserPosition([lat, lng]);
+        setMapCenter([lat, lng]);
+        setRegistrationCoords([lat, lng]);
+        const hint = await reverseGeocodeSuggestion(lat, lng);
+        if (!name) {
+          name = hint.nameSuggestion ? `お気に入りスポット（${hint.nameSuggestion}）` : "";
+        }
+        if (!place) {
+          place = hint.placeLabel;
+        }
+      } catch {
+        setLocationMessage("位置情報の取得に失敗しました。地図をタップで場所を指定できます。");
+        return;
+      } finally {
         setIsLocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  };
+      }
+    }
+
+    const safeName = name || "名称未設定のスポット";
+    const safePlace = place || `緯度 ${lat.toFixed(4)}, 経度 ${lng.toFixed(4)}`;
+
+    const params = new URLSearchParams();
+    params.set("from", "cafe-map");
+    params.set("lat", String(lat));
+    params.set("lng", String(lng));
+    params.set("cafe", safeName.slice(0, 400));
+    params.set("place", safePlace.slice(0, 600));
+    if (pairing.trim()) {
+      params.set("pairing", pairing.trim().slice(0, 120));
+    }
+
+    setLocationMessage("抽出記録の画面へ移動します。店名は「焙煎所／購入店」に入っています。");
+    router.push(`/brew/new?${params.toString()}`);
+  }, [registrationCoords, candidateName, candidatePlace, pairing, router]);
 
   const centerLabel = useMemo(
     () => `地図の中心: ${mapCenter[0].toFixed(4)}, ${mapCenter[1].toFixed(4)}`,
@@ -110,46 +239,21 @@ export default function CafeMapPage() {
   );
   const registrationLabel = useMemo(() => {
     if (!registrationCoords) {
-      return "登録位置: 未設定（地図をタップするか現在地を取得）";
+      return "記録する位置: 未設定（地図をタップするか「＋」で現在地）";
     }
-    return `登録位置: ${registrationCoords[0].toFixed(5)}, ${registrationCoords[1].toFixed(5)}`;
+    return `記録する位置: ${registrationCoords[0].toFixed(5)}, ${registrationCoords[1].toFixed(5)}`;
   }, [registrationCoords]);
 
   const handleMapSelectSpot = useCallback(async (lat: number, lng: number) => {
     const pos: [number, number] = [lat, lng];
     setRegistrationCoords(pos);
     setLocationMessage(
-      "タップした位置を保存先に設定しました。名前は右側で自由に入力してください。"
+      "タップした位置で記録します。右の「店名」で編集してから「＋ ここで記録する」で抽出記録へ進めます。"
     );
     const hint = await reverseGeocodeSuggestion(lat, lng);
     setCandidateName(hint.nameSuggestion ? `マイスポット（${hint.nameSuggestion}）` : "");
     setCandidatePlace(hint.placeLabel);
   }, []);
-
-  const saveCurrentSpotRecord = () => {
-    if (!registrationCoords) {
-      setLocationMessage("先に地図をタップするか、「＋ ここで記録する」で位置を決めてください。");
-      return;
-    }
-    const trimmedName = candidateName.trim();
-    const next: CafeRecord = {
-      id: Date.now(),
-      cafeName: trimmedName || "名称未設定のスポット",
-      lat: registrationCoords[0],
-      lng: registrationCoords[1],
-      date: new Date().toISOString().slice(0, 10),
-      rating: 4,
-      bean: "未入力",
-      note: candidatePlace || "現在地から記録",
-      foodPairing: pairing,
-      photoUrl:
-        "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=700&q=80"
-    };
-    const updated = [next, ...records];
-    setRecords(updated);
-    persistCafeRecords(updated);
-    setLocationMessage("スポットを保存しました（ブラウザに保存されています）。");
-  };
 
   const handleDeleteRecord = (record: CafeRecord) => {
     const ok = window.confirm(
@@ -193,7 +297,7 @@ export default function CafeMapPage() {
           </div>
           <button
             type="button"
-            onClick={requestCurrentLocation}
+            onClick={() => void navigateToBrewFromHere()}
             className="rounded-xl bg-amber-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-amber-800 disabled:opacity-70"
             disabled={isLocating}
           >
@@ -204,7 +308,7 @@ export default function CafeMapPage() {
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="relative overflow-hidden rounded-2xl border border-amber-200">
             <p className="pointer-events-none absolute bottom-3 left-3 right-3 z-[400] rounded-xl border border-amber-200/80 bg-white/90 px-3 py-2 text-center text-xs text-amber-900/90 shadow sm:left-auto sm:right-3 sm:max-w-sm sm:text-left">
-              地図をタップするとその地点に登録ピンが立ちます。位置はそのまま、右の欄で名前だけ変えて保存できます。
+              地図をタップして位置を決め、店名を直してから「＋ ここで記録する」で抽出記録へ。保存するとマイ・ノートとこのマップの両方に反映されます。
             </p>
             <CafeMapCanvas
               records={records}
@@ -216,34 +320,34 @@ export default function CafeMapPage() {
           </div>
 
           <aside className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
-            <h2 className="text-base font-semibold text-amber-900">スポット登録</h2>
+            <h2 className="text-base font-semibold text-amber-900">記録前のメモ</h2>
             <p className="mt-2 text-sm text-amber-900/80">{locationMessage}</p>
             <p className="mt-1 text-xs text-amber-900/60">{registrationLabel}</p>
             <p className="mt-0.5 text-xs text-amber-900/50">{centerLabel}</p>
 
             <div className="mt-4 space-y-3">
               <label className="block rounded-xl border border-amber-200 bg-white p-3">
-                <span className="text-xs font-semibold text-amber-700">スポット名（自由入力）</span>
+                <span className="text-xs font-semibold text-amber-700">店名（抽出記録の「焙煎所／購入店」に入ります）</span>
                 <input
                   type="text"
                   value={candidateName}
                   onChange={(event) => setCandidateName(event.target.value)}
                   className="mt-2 w-full rounded-lg border border-amber-200 px-3 py-2 text-sm text-amber-950 placeholder:text-amber-900/40 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  placeholder="例: 秘密の隠れ家カフェ、お気に入りの公園ベンチ…"
+                  placeholder="例: お気に入りのカフェ名"
                   autoComplete="off"
                 />
                 <p className="mt-2 text-xs leading-relaxed text-amber-900/65">
-                  緯度・経度は地図のタップ位置または現在地のままです。表示名だけここで好きな文字にできます。
+                  位置は地図のタップまたは「＋」での現在地取得で決まります。名前だけここで整えてから記録画面へ進んでください。
                 </p>
               </label>
               <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/80 p-3">
                 <p className="text-xs font-semibold text-amber-700">位置メモ（自動）</p>
                 <p className="mt-1 text-sm text-amber-900">
-                  {candidatePlace || "地図をタップするか現在地を取得すると、付近の地名がここに表示されます。"}
+                  {candidatePlace || "地図をタップするか「＋」で現在地を取得すると、付近の地名がここに表示されます。"}
                 </p>
               </div>
               <div className="rounded-xl border border-amber-200 bg-white p-3">
-                <p className="text-xs font-semibold text-amber-700">今日のお供（Food Pairing）</p>
+                <p className="text-xs font-semibold text-amber-700">お供（任意・記録画面に引き継ぎ）</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {pairingTags.map((tag) => (
                     <button
@@ -267,13 +371,6 @@ export default function CafeMapPage() {
                   className="mt-2 w-full rounded-lg border border-amber-200 px-3 py-2 text-sm text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
                   placeholder="例: カヌレ"
                 />
-                <button
-                  type="button"
-                  onClick={saveCurrentSpotRecord}
-                  className="mt-3 w-full rounded-lg bg-amber-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-800"
-                >
-                  この内容でカフェ記録を保存
-                </button>
               </div>
             </div>
 
@@ -335,7 +432,7 @@ export default function CafeMapPage() {
               </button>
             </div>
             <p className="mt-1 text-xs text-amber-800">
-              位置（緯度・経度）は記録時のままです。変更する場合は一度削除してから、地図で現在地から記録し直してください。
+              位置の変更は、マップで新しく「＋ ここで記録する」から記録し直すか、いったん削除してからやり直してください。
             </p>
 
             <div className="mt-4 space-y-3 text-sm">
@@ -431,17 +528,43 @@ export default function CafeMapPage() {
                   className="rounded-lg border border-amber-200 px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                 />
               </label>
-              <label className="flex flex-col gap-1 font-medium text-amber-900">
-                写真URL
-                <input
-                  type="url"
-                  value={editingDraft.photoUrl}
-                  onChange={(event) =>
-                    setEditingDraft((d) => (d ? { ...d, photoUrl: event.target.value } : d))
-                  }
-                  className="rounded-lg border border-amber-200 px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                />
-              </label>
+              <div className="flex flex-col gap-1">
+                <span className="font-medium text-amber-900">写真URL</span>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                  <input
+                    type="text"
+                    inputMode="url"
+                    value={editingDraft.photoUrl}
+                    onChange={(event) =>
+                      setEditingDraft((d) => (d ? { ...d, photoUrl: event.target.value } : d))
+                    }
+                    className="min-w-0 flex-1 rounded-lg border border-amber-200 px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    placeholder="https://… またはアップロードで自動入力"
+                  />
+                  <input
+                    ref={cafePhotoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    aria-label="アルバムから写真を選ぶ"
+                    onChange={handleCafePhotoFileChange}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => cafePhotoInputRef.current?.click()}
+                    disabled={cafePhotoUploading}
+                    className="shrink-0 rounded-lg border border-amber-600 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {cafePhotoUploading ? "アップロード中…" : "アルバムから選ぶ"}
+                  </button>
+                </div>
+                <p className="text-xs text-amber-800/90">
+                  スマホの写真を選ぶとサーバーへ一度送られ、URL 欄に自動で入ります（このアプリ内の保存用です）。
+                </p>
+                {cafePhotoUploadError && (
+                  <p className="text-xs font-medium text-red-700">{cafePhotoUploadError}</p>
+                )}
+              </div>
               <p className="text-xs text-amber-800">
                 緯度 {editingDraft.lat.toFixed(5)} / 経度 {editingDraft.lng.toFixed(5)}
               </p>

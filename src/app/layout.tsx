@@ -18,7 +18,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="ja">
       <body>
-        <div className="pb-20">{children}</div>
+        <div className="pb-24 sm:pb-[5.5rem]">{children}</div>
         <AppTabBar />
       </body>
     </html>

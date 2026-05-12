@@ -134,6 +134,15 @@ function LogEntryArticle({ log, onDelete, deleteDisabled }: LogEntryArticleProps
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1 space-y-2">
           <p className="text-lg font-bold leading-snug text-amber-950 sm:text-xl">{log.beanName}</p>
+          {log.brewPhotoUrl && (
+            <div className="mt-2 overflow-hidden rounded-xl border border-amber-200/80 bg-amber-50/40">
+              <img
+                src={log.brewPhotoUrl}
+                alt=""
+                className="max-h-56 w-full object-cover sm:max-h-64"
+              />
+            </div>
+          )}
           <p className="text-xs font-medium leading-relaxed text-amber-800/85 sm:text-sm">
             {log.method} · {log.roastLevel} · {formatOriginsLabel(log)}
           </p>

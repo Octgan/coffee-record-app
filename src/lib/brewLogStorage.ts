@@ -23,6 +23,12 @@ export type StoredBrewLog = {
   flavors: string[];
   aftertaste: string;
   memo: string;
+  /** カフェマップから記録したときの緯度（保存時にマップピンと同期） */
+  cafeLat?: number;
+  /** カフェマップから記録したときの経度 */
+  cafeLng?: number;
+  /** 抽出記録用の写真（data URL 可）。カフェマップのピン写真にも流用 */
+  brewPhotoUrl?: string;
 };
 
 export function normalizeMapCountryName(name: unknown) {
@@ -67,6 +73,13 @@ export function coerceStoredBrewLog(raw: unknown): StoredBrewLog | null {
     origins = mapped.length > 0 ? mapped : undefined;
   }
 
+  const cafeLat = Number(raw.cafeLat);
+  const cafeLng = Number(raw.cafeLng);
+  const brewPhotoUrl =
+    typeof raw.brewPhotoUrl === "string" && raw.brewPhotoUrl.trim() !== ""
+      ? raw.brewPhotoUrl.trim()
+      : undefined;
+
   return {
     id: raw.id,
     date: typeof raw.date === "string" ? raw.date : String(raw.date ?? ""),
@@ -83,7 +96,9 @@ export function coerceStoredBrewLog(raw: unknown): StoredBrewLog | null {
     rdtDone: Boolean(raw.rdtDone),
     flavors,
     aftertaste: typeof raw.aftertaste === "string" ? raw.aftertaste : "",
-    memo: typeof raw.memo === "string" ? raw.memo : ""
+    memo: typeof raw.memo === "string" ? raw.memo : "",
+    ...(Number.isFinite(cafeLat) && Number.isFinite(cafeLng) ? { cafeLat, cafeLng } : {}),
+    ...(brewPhotoUrl ? { brewPhotoUrl } : {})
   };
 }
 

@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { upsertCafeRecordForBrewLog } from "@/lib/cafeMapStorage";
 import { COFFEE_ORIGINS, ORIGIN_STORAGE_KEY } from "@/lib/coffeeOrigins";
 import {
   loadBrewLogsFromStorage,
   persistBrewLogs,
   type StoredBrewLog
 } from "@/lib/brewLogStorage";
+import { compressImageFileForUpload } from "@/lib/compressImageForUpload";
 
 const brewMethods = [
   "ハンドドリップ",
@@ -100,6 +102,8 @@ const grindSizes = ["極細挽き", "細挽き", "中細挽き", "中挽き", "�
 const roastLevels = ["浅煎り", "中煎り", "中深煎り", "深煎り"];
 const stars = [1, 2, 3, 4, 5];
 const pairingTags = ["ケーキ", "スコーン", "チョコ", "クッキー", "どら焼き"];
+const BREW_PHOTO_MAX_BYTES = 6 * 1024 * 1024;
+
 const flavorFamilies = [
   {
     id: "fruity",
@@ -156,6 +160,7 @@ function familyIdsFromFlavors(flavors: string[]) {
 }
 
 function BrewNewPageContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const editParam = searchParams.get("edit");
   const editingId =
@@ -188,6 +193,11 @@ function BrewNewPageContent() {
   const [saveMessage, setSaveMessage] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [formDirty, setFormDirty] = useState(false);
+  const [cafeLinkCoords, setCafeLinkCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [brewPhotoUrl, setBrewPhotoUrl] = useState("");
+  const [brewPhotoUploading, setBrewPhotoUploading] = useState(false);
+  const [brewPhotoError, setBrewPhotoError] = useState<string | null>(null);
+  const brewPhotoInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const prevEditingIdRef = useRef<number | null>(null);
   const selectedFamilies = flavorFamilies.filter((family) =>
@@ -213,6 +223,9 @@ function BrewNewPageContent() {
     setRdtDone(false);
     setSaveMessage("");
     setFormDirty(false);
+    setCafeLinkCoords(null);
+    setBrewPhotoUrl("");
+    setBrewPhotoError(null);
   }, []);
 
   useEffect(() => {
@@ -263,8 +276,47 @@ function BrewNewPageContent() {
       Boolean(log.rdtDone) ||
       flavors.length > 0;
     setMode(usePro ? "pro" : "beginner");
+    const lat = log.cafeLat;
+    const lng = log.cafeLng;
+    if (typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng)) {
+      setCafeLinkCoords({ lat, lng });
+    } else {
+      setCafeLinkCoords(null);
+    }
+    setBrewPhotoUrl(log.brewPhotoUrl ?? "");
+    setBrewPhotoError(null);
     setFormDirty(false);
   }, [editingId, resetToNewBrewDefaults]);
+
+  useEffect(() => {
+    if (editingId != null) {
+      return;
+    }
+    if (searchParams.get("from") !== "cafe-map") {
+      return;
+    }
+
+    const lat = Number(searchParams.get("lat"));
+    const lng = Number(searchParams.get("lng"));
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      setCafeLinkCoords({ lat, lng });
+    }
+
+    const cafe = searchParams.get("cafe");
+    if (cafe) {
+      setRoastery(cafe);
+    }
+    const place = searchParams.get("place");
+    if (place) {
+      setMemo((prev) => (prev.trim() === "" ? place : prev));
+    }
+    const pairingParam = searchParams.get("pairing");
+    if (pairingParam) {
+      setFoodPairing(pairingParam);
+    }
+
+    router.replace("/brew/new", { scroll: false });
+  }, [editingId, searchParams, router]);
 
   useEffect(() => {
     const el = formRef.current;
@@ -328,6 +380,63 @@ function BrewNewPageContent() {
       prev.map((entry) => (entry.id === id ? { ...entry, [key]: value } : entry))
     );
   };
+
+  const handleBrewPhotoFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.target;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) {
+      return;
+    }
+    setBrewPhotoError(null);
+    setBrewPhotoUploading(true);
+    try {
+      let uploadBlob: Blob;
+      let uploadName = file.name?.trim() || "photo";
+      try {
+        uploadBlob = await compressImageFileForUpload(file);
+        uploadName = uploadName.replace(/\.[^.]+$/i, "") + ".jpg";
+      } catch {
+        const allowed =
+          file.type === "image/jpeg" ||
+          file.type === "image/png" ||
+          file.type === "image/webp" ||
+          file.type === "image/gif";
+        if (!allowed) {
+          throw new Error(
+            "この画像は自動縮小できませんでした。写真アプリで JPEG に書き出してから選び直してください。"
+          );
+        }
+        if (file.size > BREW_PHOTO_MAX_BYTES) {
+          throw new Error("画像が大きすぎます（最大 6MB）。別の写真をお試しください。");
+        }
+        uploadBlob = file;
+      }
+      if (uploadBlob.size > BREW_PHOTO_MAX_BYTES) {
+        throw new Error("画像が大きすぎます（最大 6MB）。別の写真をお試しください。");
+      }
+      const formData = new FormData();
+      formData.append(
+        "file",
+        uploadBlob,
+        uploadName.endsWith(".jpg") ? uploadName : `${uploadName}.jpg`
+      );
+      const response = await fetch("/api/cafe-photo", { method: "POST", body: formData });
+      const payload = (await response.json()) as { url?: string; error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "アップロードに失敗しました。");
+      }
+      if (!payload.url) {
+        throw new Error("画像 URL を取得できませんでした。");
+      }
+      setBrewPhotoUrl(payload.url);
+    } catch (err) {
+      setBrewPhotoError(err instanceof Error ? err.message : "エラーが発生しました。");
+    } finally {
+      setBrewPhotoUploading(false);
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (isSaving) {
@@ -356,7 +465,13 @@ function BrewNewPageContent() {
       rdtDone,
       flavors: selectedFlavors,
       aftertaste,
-      memo
+      memo,
+      ...(cafeLinkCoords &&
+      Number.isFinite(cafeLinkCoords.lat) &&
+      Number.isFinite(cafeLinkCoords.lng)
+        ? { cafeLat: cafeLinkCoords.lat, cafeLng: cafeLinkCoords.lng }
+        : {}),
+      ...(brewPhotoUrl.trim() !== "" ? { brewPhotoUrl: brewPhotoUrl.trim() } : {})
     };
 
     setIsSaving(true);
@@ -382,6 +497,7 @@ function BrewNewPageContent() {
           setSaveMessage("更新の反映を確認できませんでした。マイ・ノートを開き直してください。");
           return;
         }
+        upsertCafeRecordForBrewLog({ ...nextLog, id: editingId });
         setSaveMessage("記録を更新しました。");
       } else {
         const storedLogs = loadBrewLogsFromStorage();
@@ -391,6 +507,7 @@ function BrewNewPageContent() {
           setSaveMessage("保存の反映を確認できませんでした。もう一度お試しください。");
           return;
         }
+        upsertCafeRecordForBrewLog(nextLog);
         setSaveMessage(
           `記録を保存しました。${cleanedOrigins
             .map(
@@ -489,13 +606,20 @@ function BrewNewPageContent() {
                 </label>
 
                 <label className="flex flex-col gap-2 text-sm font-medium text-amber-900">
-                  焙煎所 / 購入店
+                  <span>
+                    焙煎所 / 購入店
+                    {cafeLinkCoords && (
+                      <span className="ml-1 text-xs font-normal text-amber-700/90">
+                        （カフェマップの店名が入っています）
+                      </span>
+                    )}
+                  </span>
                   <input
                     type="text"
                     value={roastery}
                     onChange={(event) => setRoastery(event.target.value)}
                     className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    placeholder="例: COFFEE ROASTER TOKYO"
+                    placeholder="例: COFFEE ROASTER TOKYO / お気に入りのカフェ名"
                   />
                 </label>
 
@@ -963,6 +1087,42 @@ function BrewNewPageContent() {
               </div>
             </div>
           )}
+
+          <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
+            <h2 className="text-sm font-semibold text-amber-900">写真（任意）</h2>
+            <p className="mt-1 text-xs text-amber-900/70">
+              アルバムから選ぶとアップロードされ、マイ・ノートとカフェマップのピンにも反映されます。
+            </p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-stretch">
+              <input
+                type="text"
+                inputMode="url"
+                value={brewPhotoUrl}
+                onChange={(event) => setBrewPhotoUrl(event.target.value)}
+                className="min-w-0 flex-1 rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                placeholder="画像 URL（data: または https://）"
+              />
+              <input
+                ref={brewPhotoInputRef}
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                aria-label="アルバムから写真を選ぶ"
+                onChange={handleBrewPhotoFileChange}
+              />
+              <button
+                type="button"
+                onClick={() => brewPhotoInputRef.current?.click()}
+                disabled={brewPhotoUploading}
+                className="shrink-0 rounded-xl border border-amber-600 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {brewPhotoUploading ? "アップロード中…" : "アルバムから選ぶ"}
+              </button>
+            </div>
+            {brewPhotoError && (
+              <p className="mt-2 text-xs font-medium text-red-700">{brewPhotoError}</p>
+            )}
+          </div>
 
           <button
             type="submit"

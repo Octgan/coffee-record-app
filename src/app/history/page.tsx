@@ -196,33 +196,17 @@ export default function HistoryPage() {
   }, [logs]);
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-3 py-6 sm:px-6 sm:py-10 md:py-14">
-      <section className="rounded-2xl border border-amber-900/15 bg-white/90 p-4 shadow-xl shadow-amber-950/10 backdrop-blur-sm sm:rounded-3xl sm:p-7 md:p-10">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-amber-800">抽出履歴</p>
-            <h1 className="mt-1 text-3xl font-bold text-amber-950 sm:text-4xl">
-              Brew History Calendar
-            </h1>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href="/journal"
-              className="rounded-lg border border-amber-600 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 transition hover:bg-amber-100"
-            >
-              マイ・ノート
-            </Link>
-            <Link
-              href="/"
-              className="rounded-lg border border-amber-700 px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
-            >
-              ダッシュボードへ戻る
-            </Link>
-          </div>
-        </div>
+    <main className="mx-auto w-full max-w-5xl px-2 py-3 sm:px-4 sm:py-5 md:px-6">
+      <section className="rounded-2xl border border-amber-900/15 bg-white/90 p-3 shadow-xl shadow-amber-950/10 backdrop-blur-sm sm:rounded-3xl sm:p-5 md:p-6">
+        <header className="border-b border-amber-200/60 pb-3 sm:pb-4">
+          <h1 className="text-xl font-bold tracking-tight text-amber-950 sm:text-2xl">
+            Brew calendar
+          </h1>
+          <p className="mt-0.5 text-xs text-amber-800/80 sm:text-sm">月別の抽出履歴</p>
+        </header>
 
-        <div className="mt-6 rounded-2xl border border-amber-200/80 bg-gradient-to-b from-amber-50/90 to-white p-3 shadow-inner shadow-amber-100/50 sm:mt-8 sm:p-5">
-          <div className="mb-4 grid grid-cols-2 gap-2 sm:gap-3">
+        <div className="mt-3 rounded-2xl border border-amber-200/80 bg-gradient-to-b from-amber-50/90 to-white p-2 shadow-inner shadow-amber-100/50 sm:mt-4 sm:p-4 md:p-5">
+          <div className="mb-3 grid grid-cols-2 gap-2 sm:mb-4 sm:gap-3">
             <label className="flex flex-col gap-2 text-sm font-semibold text-amber-900">
               Year
               <select
@@ -261,8 +245,8 @@ export default function HistoryPage() {
             </label>
           </div>
 
-          <div className="mb-4 grid grid-cols-2 gap-2 [grid-template-areas:'title_title'_'prev_next'] sm:mb-5 sm:grid-cols-[minmax(5.5rem,auto)_minmax(0,1fr)_minmax(5.5rem,auto)] sm:gap-3 sm:[grid-template-areas:'prev_title_next'] sm:items-center">
-            <p className="[grid-area:title] text-center text-lg font-bold tracking-tight text-amber-950 sm:text-xl">
+          <div className="mb-3 grid grid-cols-2 gap-2 [grid-template-areas:'title_title'_'prev_next'] sm:mb-4 sm:grid-cols-[minmax(5.5rem,auto)_minmax(0,1fr)_minmax(5.5rem,auto)] sm:gap-3 sm:[grid-template-areas:'prev_title_next'] sm:items-center">
+            <p className="[grid-area:title] text-center text-base font-bold tracking-tight text-amber-950 sm:text-lg md:text-xl">
               {monthLabel}
             </p>
             <button
@@ -272,7 +256,7 @@ export default function HistoryPage() {
                   new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1)
                 )
               }
-              className="[grid-area:prev] min-h-11 rounded-xl border-2 border-amber-300/90 bg-white px-2 py-2.5 text-sm font-semibold text-amber-900 shadow-sm transition hover:border-amber-400 hover:bg-amber-50 active:scale-[0.98] sm:min-h-0 sm:px-4 sm:py-2.5"
+              className="[grid-area:prev] min-h-12 rounded-xl border-2 border-amber-300/90 bg-white px-2 py-2.5 text-sm font-semibold text-amber-900 shadow-sm transition hover:border-amber-400 hover:bg-amber-50 active:scale-[0.98] sm:min-h-0 sm:px-4 sm:py-2.5"
             >
               前の月
             </button>
@@ -283,21 +267,21 @@ export default function HistoryPage() {
                   new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1)
                 )
               }
-              className="[grid-area:next] min-h-11 rounded-xl border-2 border-amber-300/90 bg-white px-2 py-2.5 text-sm font-semibold text-amber-900 shadow-sm transition hover:border-amber-400 hover:bg-amber-50 active:scale-[0.98] sm:min-h-0 sm:px-4 sm:py-2.5"
+              className="[grid-area:next] min-h-12 rounded-xl border-2 border-amber-300/90 bg-white px-2 py-2.5 text-sm font-semibold text-amber-900 shadow-sm transition hover:border-amber-400 hover:bg-amber-50 active:scale-[0.98] sm:min-h-0 sm:px-4 sm:py-2.5"
             >
               次の月
             </button>
           </div>
 
-          <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold tracking-tight text-amber-800/75 sm:gap-2 sm:text-xs sm:tracking-normal">
+          <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-bold tracking-tight text-amber-800/80 sm:gap-2 sm:text-xs sm:tracking-normal md:text-sm">
             {weekdayLabels.map((label) => (
-              <div key={label} className="py-0.5 sm:py-1">
+              <div key={label} className="py-1 sm:py-1.5">
                 {label}
               </div>
             ))}
           </div>
 
-          <div className="mt-1.5 grid w-full grid-cols-7 gap-1 sm:mt-2 sm:gap-2">
+          <div className="mt-2 grid w-full grid-cols-7 gap-1.5 sm:mt-2.5 sm:gap-2 md:gap-2.5">
             {calendarDays.map((date, index) => {
               if (!date) {
                 return (
@@ -311,7 +295,7 @@ export default function HistoryPage() {
               const dateKey = formatDateKey(date);
               const hasLogs = logsByDate.has(dateKey);
 
-              const cellClass = `relative flex aspect-square min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border p-1 text-left transition sm:p-1.5 ${
+              const cellClass = `relative flex aspect-square min-h-[2.85rem] min-w-0 flex-col overflow-hidden rounded-xl border p-1.5 text-left transition sm:min-h-0 sm:p-2 ${
                 hasLogs
                   ? "border-amber-500 bg-gradient-to-br from-amber-100 via-amber-50 to-amber-200/90 shadow-md shadow-amber-900/10 ring-1 ring-amber-400/40 hover:from-amber-200 hover:via-amber-100 hover:to-amber-200 hover:ring-amber-500/50 active:scale-[0.98]"
                   : "border-amber-200/90 bg-white/95 text-amber-900/45 shadow-sm"
@@ -320,7 +304,7 @@ export default function HistoryPage() {
               const inner = (
                 <>
                   <span
-                    className={`relative z-20 shrink-0 text-xs font-bold tabular-nums sm:text-sm ${
+                    className={`relative z-20 shrink-0 text-sm font-bold tabular-nums sm:text-base ${
                       hasLogs ? "text-amber-950" : "text-amber-800/50"
                     }`}
                   >
@@ -335,7 +319,7 @@ export default function HistoryPage() {
                           opacity: stampByDate.get(dateKey)?.opacity ?? 0.55
                         }}
                       >
-                        <div className="h-[72%] w-[72%] max-h-[4.5rem] max-w-[4.5rem] sm:h-[68%] sm:w-[68%]">
+                        <div className="h-[76%] w-[76%] max-h-[5.25rem] max-w-[5.25rem] sm:h-[70%] sm:w-[70%] sm:max-h-[5.5rem] sm:max-w-[5.5rem]">
                           <StampIllustration
                             kind={stampKinds[stampByDate.get(dateKey)?.kindIndex ?? 0]}
                             seed={dateKey}
@@ -343,7 +327,7 @@ export default function HistoryPage() {
                           />
                         </div>
                       </div>
-                      <span className="absolute bottom-1 left-1/2 z-20 -translate-x-1/2 rounded-full bg-amber-900 px-1.5 py-0.5 text-[9px] font-bold tabular-nums text-amber-50 shadow sm:bottom-1.5 sm:px-2 sm:text-[10px]">
+                      <span className="absolute bottom-1 left-1/2 z-20 -translate-x-1/2 rounded-full bg-amber-900 px-2 py-0.5 text-[10px] font-bold tabular-nums text-amber-50 shadow sm:bottom-1.5 sm:text-[11px]">
                         {logsByDate.get(dateKey)?.length}件
                       </span>
                       {pairingByDate.get(dateKey) && (
@@ -373,8 +357,9 @@ export default function HistoryPage() {
             })}
           </div>
 
-          <p className="mt-3 text-xs leading-relaxed text-amber-900/75 sm:mt-4 sm:text-sm">
-            記録がある日付は濃い背景 + スタンプで表示されます。タップすると「マイ・ノート」でその日の記録を開きます。
+          <p className="mt-2.5 text-[11px] leading-relaxed text-amber-900/75 sm:mt-3 sm:text-xs md:text-sm">
+            記録のある日はスタンプ表示。タップで <span className="font-semibold text-amber-900">My coffee note</span>{" "}
+            のその日へ移動します。
           </p>
         </div>
       </section>

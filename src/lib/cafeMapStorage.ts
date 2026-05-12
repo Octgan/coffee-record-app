@@ -1,4 +1,11 @@
+import type { StoredBrewLog } from "./brewLogStorage";
+
 export const CAFE_MAP_STORAGE_KEY = "coffee-cafe-map-logs";
+
+export const CAFE_MAP_STORAGE_UPDATED_EVENT = "coffee-cafe-map-updated";
+
+export const DEFAULT_CAFE_PHOTO_URL =
+  "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=700&q=80";
 
 /** 現在は localStorage。バックエンドと連携する場合も、取得は常にログインユーザー本人の行のみに限定してください。 */
 export function persistCafeRecords(records: CafeRecord[]) {
@@ -6,10 +13,13 @@ export function persistCafeRecords(records: CafeRecord[]) {
     return;
   }
   localStorage.setItem(CAFE_MAP_STORAGE_KEY, JSON.stringify(records));
+  window.dispatchEvent(new Event(CAFE_MAP_STORAGE_UPDATED_EVENT));
 }
 
 export type CafeRecord = {
   id: number;
+  /** 抽出記録（StoredBrewLog.id）と紐づく場合。保存・更新で同期する */
+  brewLogId?: number;
   cafeName: string;
   lat: number;
   lng: number;
@@ -43,8 +53,13 @@ export function coerceCafeRecord(raw: unknown): CafeRecord | null {
   }
   rating = Math.min(5, Math.max(1, Math.round(rating)));
 
+  const brewLogId = Number(raw.brewLogId);
+  const brewLogIdNorm =
+    Number.isFinite(brewLogId) && !Number.isNaN(brewLogId) ? brewLogId : undefined;
+
   return {
     id: raw.id,
+    ...(brewLogIdNorm !== undefined ? { brewLogId: brewLogIdNorm } : {}),
     cafeName: typeof raw.cafeName === "string" && raw.cafeName.trim() !== "" ? raw.cafeName : "名称未設定",
     lat,
     lng,
@@ -59,7 +74,7 @@ export function coerceCafeRecord(raw: unknown): CafeRecord | null {
     photoUrl:
       typeof raw.photoUrl === "string" && raw.photoUrl.trim() !== ""
         ? raw.photoUrl
-        : "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=700&q=80"
+        : DEFAULT_CAFE_PHOTO_URL
   };
 }
 
@@ -68,6 +83,57 @@ export function coerceCafeRecords(raw: unknown): CafeRecord[] {
     return [];
   }
   return raw.map(coerceCafeRecord).filter((r): r is CafeRecord => r !== null);
+}
+
+/**
+ * 抽出記録を保存したあと、同じ位置・店名でカフェマップのピンを1件にまとめる（brewLogId で突合）。
+ */
+export function upsertCafeRecordForBrewLog(log: StoredBrewLog) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const lat = log.cafeLat;
+  const lng = log.cafeLng;
+  if (typeof lat !== "number" || typeof lng !== "number" || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return;
+  }
+
+  let records: CafeRecord[] = [];
+  const rawStored = localStorage.getItem(CAFE_MAP_STORAGE_KEY);
+  if (rawStored) {
+    try {
+      records = coerceCafeRecords(JSON.parse(rawStored) as unknown);
+    } catch {
+      records = [];
+    }
+  }
+
+  const cafeName =
+    log.roastery.trim() !== "" && log.roastery !== "未入力" ? log.roastery.trim() : "名称未設定のスポット";
+  const beanLabel =
+    log.beanName.trim() !== "" && log.beanName !== "未入力" ? log.beanName : "未入力";
+  const noteParts = [log.memo?.trim(), log.aftertaste?.trim()].filter(Boolean) as string[];
+  const photo = log.brewPhotoUrl?.trim() || DEFAULT_CAFE_PHOTO_URL;
+
+  const idx = records.findIndex((r) => r.brewLogId === log.id);
+  const entry: CafeRecord = {
+    id: idx >= 0 ? records[idx]!.id : Date.now(),
+    brewLogId: log.id,
+    cafeName,
+    lat,
+    lng,
+    date: log.date,
+    rating: Math.min(5, Math.max(1, Math.round(log.overallRating))),
+    bean: beanLabel,
+    note: noteParts.join("\n"),
+    foodPairing: log.foodPairing?.trim() || undefined,
+    photoUrl: photo
+  };
+
+  const next =
+    idx >= 0 ? records.map((r, i) => (i === idx ? entry : r)) : [entry, ...records];
+
+  persistCafeRecords(next);
 }
 
 export const SAMPLE_CAFE_RECORDS: CafeRecord[] = [
