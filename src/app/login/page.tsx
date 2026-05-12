@@ -1,36 +1,44 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
-function LoginForm() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const nextPath = searchParams.get("next") ?? "/";
-  const errorParam = searchParams.get("error");
+type LoginFieldsProps = {
+  nextPath: string;
+  showConfigInstructions: boolean;
+  showAuthError: boolean;
+};
 
+/**
+ * useSearchParams を使う親と状態を分離し、タブ切替（mode）がリセットされないようにする。
+ */
+function LoginFields({ nextPath, showConfigInstructions, showAuthError }: LoginFieldsProps) {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const configError =
-    errorParam === "config" ||
-    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const canSubmit = email.trim().length > 0 && password.length > 0;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setMessage(null);
-    if (configError) {
-      setMessage("Supabase の環境変数が設定されていません。.env.local を確認してください。");
+
+    let supabase: ReturnType<typeof createClient>;
+    try {
+      supabase = createClient();
+    } catch {
+      setMessage(
+        "Supabase の設定を読み込めませんでした。.env.local に NEXT_PUBLIC_SUPABASE_URL と NEXT_PUBLIC_SUPABASE_ANON_KEY を書き、開発サーバー（npm run dev）を再起動してください。"
+      );
       return;
     }
+
     setLoading(true);
     try {
-      const supabase = createClient();
       if (mode === "signup") {
         const { error } = await supabase.auth.signUp({
           email: email.trim(),
@@ -63,39 +71,52 @@ function LoginForm() {
     }
   };
 
+  const primaryLabel =
+    loading ? "処理中…" : mode === "signup" ? "新規登録する" : "ログインする";
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-amber-50 to-amber-100/80 px-4 py-12">
       <div className="w-full max-w-md rounded-3xl border border-amber-900/15 bg-white/95 p-8 shadow-xl">
         <h1 className="text-center text-2xl font-bold text-amber-950">Coffee Record</h1>
         <p className="mt-2 text-center text-sm text-amber-900/75">ログインして自分の記録だけを表示・保存します</p>
 
-        {errorParam === "auth" && (
+        {showAuthError && (
           <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-800">
             認証に失敗しました。もう一度お試しください。
           </p>
         )}
-        {configError && (
+        {showConfigInstructions && (
           <p className="mt-4 rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-950">
-            このアプリを動かすには Supabase のプロジェクト URL と anon
-            キーを .env.local に設定してください（README 参照）。
+            環境変数が未設定のためここにリダイレクトされました。Supabase のプロジェクト URL と anon
+            キーを .env.local に設定し、開発サーバーを再起動してください。
           </p>
         )}
 
-        <div className="mt-6 flex rounded-xl border border-amber-200 p-1">
+        <div className="mt-6 flex rounded-xl border border-amber-200 p-1" role="tablist" aria-label="ログインまたは新規登録">
           <button
             type="button"
-            onClick={() => setMode("signin")}
+            role="tab"
+            aria-selected={mode === "signin"}
+            onClick={() => {
+              setMode("signin");
+              setMessage(null);
+            }}
             className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${
-              mode === "signin" ? "bg-amber-700 text-white" : "text-amber-900"
+              mode === "signin" ? "bg-amber-700 text-white" : "text-amber-900 hover:bg-amber-50"
             }`}
           >
             ログイン
           </button>
           <button
             type="button"
-            onClick={() => setMode("signup")}
+            role="tab"
+            aria-selected={mode === "signup"}
+            onClick={() => {
+              setMode("signup");
+              setMessage(null);
+            }}
             className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${
-              mode === "signup" ? "bg-amber-700 text-white" : "text-amber-900"
+              mode === "signup" ? "bg-amber-700 text-white" : "text-amber-900 hover:bg-amber-50"
             }`}
           >
             新規登録
@@ -131,10 +152,10 @@ function LoginForm() {
           )}
           <button
             type="submit"
-            disabled={loading || configError}
-            className="w-full rounded-xl bg-amber-700 py-3 text-sm font-semibold text-white transition hover:bg-amber-800 disabled:opacity-60"
+            disabled={loading || !canSubmit}
+            className="w-full rounded-xl bg-amber-700 py-3 text-sm font-semibold text-white transition hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {loading ? "処理中…" : mode === "signup" ? "登録する" : "ログインする"}
+            {primaryLabel}
           </button>
         </form>
 
@@ -143,6 +164,20 @@ function LoginForm() {
         </p>
       </div>
     </main>
+  );
+}
+
+function LoginSearchParamsBridge() {
+  const searchParams = useSearchParams();
+  const nextPath = searchParams.get("next") ?? "/";
+  const errorParam = searchParams.get("error");
+
+  return (
+    <LoginFields
+      nextPath={nextPath}
+      showConfigInstructions={errorParam === "config"}
+      showAuthError={errorParam === "auth"}
+    />
   );
 }
 
@@ -155,7 +190,7 @@ export default function LoginPage() {
         </main>
       }
     >
-      <LoginForm />
+      <LoginSearchParamsBridge />
     </Suspense>
   );
 }
