@@ -6,15 +6,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { COFFEE_ORIGINS } from "@/lib/coffeeOrigins";
 import {
   BREW_LOG_JOURNAL_PAGE_SIZE,
-  BREW_LOG_STORAGE_KEY,
   BREW_LOGS_UPDATED_EVENT,
-  loadBrewLogsFromStorage,
   logMatchesCountryKey,
   normalizeMapCountryName,
-  persistBrewLogs,
   sliceLogsPage,
   type StoredBrewLog
 } from "@/lib/brewLogStorage";
+import { deleteBrewLog, fetchBrewLogs } from "@/lib/data/brewLogsDb";
+import { createClient } from "@/lib/supabase/client";
 import { journalShell } from "./shell";
 
 type JournalSortKey = "dateDesc" | "dateAsc" | "ratingDesc" | "ratingAsc";
@@ -224,39 +223,38 @@ export function JournalClient() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const skipScrollTopOnPaginationMount = useRef(true);
 
-  const refreshFromStorage = useCallback(() => {
-    setLogs(loadBrewLogsFromStorage());
+  const refreshFromStorage = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const list = await fetchBrewLogs(supabase);
+      setLogs(list);
+    } catch {
+      setLogs([]);
+    }
   }, []);
 
-  /** URL・ページ・検索・並び替えのたびにストレージから再読込（他画面での保存と常に整合） */
+  /** URL・ページ・検索・並び替えのたびに再読込（他画面での保存と常に整合） */
   useEffect(() => {
-    refreshFromStorage();
+    void refreshFromStorage();
   }, [searchSignature, currentPage, searchQuery, sortKey, refreshFromStorage]);
 
   useEffect(() => {
-    const onUpdated = () => refreshFromStorage();
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === BREW_LOG_STORAGE_KEY || e.key === null) {
-        refreshFromStorage();
-      }
-    };
+    const onUpdated = () => void refreshFromStorage();
     const onPageShow = (e: PageTransitionEvent) => {
       if (e.persisted) {
-        refreshFromStorage();
+        void refreshFromStorage();
       }
     };
     const onVisible = () => {
       if (document.visibilityState === "visible") {
-        refreshFromStorage();
+        void refreshFromStorage();
       }
     };
     window.addEventListener(BREW_LOGS_UPDATED_EVENT, onUpdated);
-    window.addEventListener("storage", onStorage);
     window.addEventListener("pageshow", onPageShow);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.removeEventListener(BREW_LOGS_UPDATED_EVENT, onUpdated);
-      window.removeEventListener("storage", onStorage);
       window.removeEventListener("pageshow", onPageShow);
       document.removeEventListener("visibilitychange", onVisible);
     };
@@ -355,19 +353,13 @@ export function JournalClient() {
     }
     setDeletingId(log.id);
     try {
-      const all = loadBrewLogsFromStorage();
-      const next = all.filter((item) => item.id !== log.id);
-      if (next.length === all.length) {
-        window.alert("記録が見つかりませんでした。一覧を更新します。");
-        refreshFromStorage();
-        return;
-      }
-      persistBrewLogs(next);
-      const verify = loadBrewLogsFromStorage();
-      if (verify.some((item) => item.id === log.id)) {
-        window.alert("削除の反映を確認できませんでした。もう一度お試しください。");
-        refreshFromStorage();
-      }
+      const supabase = createClient();
+      await deleteBrewLog(supabase, log.id);
+      window.dispatchEvent(new Event(BREW_LOGS_UPDATED_EVENT));
+      await refreshFromStorage();
+    } catch {
+      window.alert("削除に失敗しました。通信状況を確認してからもう一度お試しください。");
+      await refreshFromStorage();
     } finally {
       setDeletingId(null);
     }

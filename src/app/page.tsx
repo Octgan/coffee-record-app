@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 const primaryBtn =
   "flex min-h-[3.5rem] w-full items-center justify-center rounded-2xl bg-[#b0551a] px-5 py-4 text-center text-lg font-semibold leading-snug text-white shadow-md shadow-amber-950/15 transition hover:bg-[#964714] focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 active:scale-[0.99] sm:min-h-[3.25rem] sm:text-base";
@@ -12,6 +14,15 @@ const secondarySoftBtn =
   "flex min-h-[3.25rem] w-full items-center justify-center rounded-2xl border border-amber-600/70 bg-amber-50/90 px-5 py-3.5 text-center text-base font-semibold leading-snug text-amber-950 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 active:scale-[0.99] sm:text-[0.95rem]";
 
 export default function DashboardPage() {
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.replace("/login");
+    router.refresh();
+  };
+
   return (
     <main className="relative flex min-h-screen w-full flex-col justify-center bg-gradient-to-b from-amber-50/95 via-amber-50/60 to-amber-100/50 px-[2.5vw] py-10 sm:px-6 sm:py-14">
       <div
@@ -65,6 +76,16 @@ export default function DashboardPage() {
               </span>
             </span>
           </Link>
+        </div>
+
+        <div className="mt-8 flex justify-center">
+          <button
+            type="button"
+            onClick={() => void handleSignOut()}
+            className="text-sm font-semibold text-amber-800/80 underline-offset-2 transition hover:text-amber-950 hover:underline"
+          >
+            ログアウト
+          </button>
         </div>
       </section>
     </main>

@@ -4,14 +4,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ComposableMap, Geographies, Geography } from "react-simple-maps";
-import { COFFEE_ORIGINS, ORIGIN_STORAGE_KEY } from "@/lib/coffeeOrigins";
+import { COFFEE_ORIGINS } from "@/lib/coffeeOrigins";
 import {
   getLogOriginCountries,
-  loadBrewLogsFromStorage,
   logMatchesCountryKey,
   normalizeMapCountryName,
   type StoredBrewLog
 } from "@/lib/brewLogStorage";
+import { fetchBrewLogs } from "@/lib/data/brewLogsDb";
+import { fetchOriginExtras } from "@/lib/data/originExtrasDb";
+import { createClient } from "@/lib/supabase/client";
 
 const geographyUrl =
   "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
@@ -24,18 +26,22 @@ export default function WorldMapPage() {
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
 
   useEffect(() => {
-    const parsedLogs = loadBrewLogsFromStorage();
-    setLogs(parsedLogs);
-    const storedLegacyOriginsRaw = localStorage.getItem(ORIGIN_STORAGE_KEY);
-    try {
-      const originFromLogs = parsedLogs.flatMap((log) => getLogOriginCountries(log));
-      const legacyOrigins = storedLegacyOriginsRaw
-        ? (JSON.parse(storedLegacyOriginsRaw) as string[])
-        : [];
-      setVisitedOrigins(Array.from(new Set([...originFromLogs, ...legacyOrigins])));
-    } catch {
-      setVisitedOrigins([]);
-    }
+    const load = async () => {
+      try {
+        const supabase = createClient();
+        const [parsedLogs, extras] = await Promise.all([
+          fetchBrewLogs(supabase),
+          fetchOriginExtras(supabase)
+        ]);
+        setLogs(parsedLogs);
+        const originFromLogs = parsedLogs.flatMap((log) => getLogOriginCountries(log));
+        setVisitedOrigins(Array.from(new Set([...originFromLogs, ...extras])));
+      } catch {
+        setLogs([]);
+        setVisitedOrigins([]);
+      }
+    };
+    void load();
   }, []);
 
   const visitedSet = useMemo(
@@ -78,35 +84,15 @@ export default function WorldMapPage() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 py-10 sm:py-14">
-      <section className="rounded-3xl border border-amber-900/15 bg-white/85 p-7 shadow-xl shadow-amber-950/10 backdrop-blur-sm sm:p-10">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-amber-800">産地コレクション</p>
-            <h1 className="mt-1 text-3xl font-bold text-amber-950 sm:text-4xl">
-              World Coffee Origin Map
-            </h1>
-            <p className="mt-2 text-sm text-amber-900/80">
-              記録済みの産地だけ、地図上でコーヒーブラウンに色づきます。国をタップするとマイ・ノートへ進みます。
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href="/journal"
-              className="rounded-lg border border-amber-600 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 transition hover:bg-amber-100"
-            >
-              マイ・ノート
-            </Link>
-            <Link
-              href="/"
-              className="rounded-lg border border-amber-700 px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100"
-            >
-              ダッシュボードへ戻る
-            </Link>
-          </div>
+    <main className="min-h-screen w-full px-4 py-4 sm:px-6 sm:py-6">
+      <section className="mx-auto flex w-full max-w-7xl flex-col gap-4 rounded-3xl border border-amber-900/15 bg-white/85 p-4 shadow-xl shadow-amber-950/10 backdrop-blur-sm sm:p-6">
+        <div>
+          <h1 className="text-3xl font-bold text-amber-950 sm:text-4xl">
+            World Map Collection
+          </h1>
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center gap-4 text-sm">
+        <div className="flex flex-wrap items-center gap-4 text-sm">
           <div className="flex items-center gap-2 text-amber-900">
             <span className="inline-block h-3 w-3 rounded-full bg-amber-700" />
             記録済み産地
@@ -117,13 +103,12 @@ export default function WorldMapPage() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
-          <div className="relative rounded-2xl border border-amber-200 bg-[#f6efe4] p-3 sm:p-5">
+        <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] lg:items-start">
+          <div className="relative flex min-h-[min(68vh,720px)] w-full items-center justify-center overflow-hidden rounded-2xl border border-amber-200 bg-[#f6efe4] p-2 sm:p-4 [&_.rsm-svg]:h-auto [&_.rsm-svg]:max-h-[min(72vh,760px)] [&_.rsm-svg]:w-full">
             <ComposableMap
               projection="geoMercator"
-              projectionConfig={{ scale: 150 }}
-              className="h-auto w-full"
-              style={{ width: "100%", height: "auto" }}
+              projectionConfig={{ scale: 175 }}
+              className="max-w-full"
             >
               <Geographies geography={geographyUrl}>
                 {({ geographies }) =>
@@ -171,12 +156,12 @@ export default function WorldMapPage() {
             )}
           </div>
 
-          <aside className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5">
+          <aside className="max-h-[min(68vh,720px)] overflow-y-auto rounded-2xl border border-amber-200 bg-amber-50/70 p-4 sm:p-5">
             <h2 className="text-base font-semibold text-amber-900">
               {selectedCountry ? `${selectedCountry} の抽出履歴` : "国をタップして確認"}
             </h2>
             <p className="mt-2 text-sm text-amber-900/70">
-              記録がある国はマイ・ノートへジャンプします。ない国はここで案内します。
+              記録がある国は下のボタンからマイ・ノートを開けます。
             </p>
 
             {selectedCountry && (
@@ -213,7 +198,7 @@ export default function WorldMapPage() {
           </aside>
         </div>
 
-        <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 sm:p-5">
           <h2 className="text-base font-semibold text-amber-900">記録済みの産地</h2>
           <div className="mt-3 flex flex-wrap gap-2">
             {visitedLabels.length > 0 ? (

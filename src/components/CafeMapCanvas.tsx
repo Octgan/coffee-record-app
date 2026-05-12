@@ -42,6 +42,8 @@ type CafeMapCanvasProps = {
   userPosition: [number, number] | null;
   registrationCoords: [number, number] | null;
   onMapClick: (lat: number, lng: number) => void;
+  /** 既存ピンをタップしたとき（新規記録の店名・位置の初期値に使う） */
+  onRecordMarkerSelect?: (record: CafeRecord) => void;
 };
 
 export default function CafeMapCanvas({
@@ -50,7 +52,8 @@ export default function CafeMapCanvas({
   mapZoom = 13,
   userPosition,
   registrationCoords,
-  onMapClick
+  onMapClick,
+  onRecordMarkerSelect = () => {}
 }: CafeMapCanvasProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [coffeeIcon, setCoffeeIcon] = useState<DivIcon | null>(null);
@@ -122,7 +125,16 @@ export default function CafeMapCanvas({
 
         {coffeeIcon &&
           records.map((record) => (
-            <Marker key={record.id} position={[record.lat, record.lng]} icon={coffeeIcon}>
+            <Marker
+              key={record.id}
+              position={[record.lat, record.lng]}
+              icon={coffeeIcon}
+              eventHandlers={{
+                click: () => {
+                  onRecordMarkerSelect(record);
+                }
+              }}
+            >
               <Popup>
                 <div className="w-52 space-y-2">
                   <img

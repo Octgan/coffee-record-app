@@ -3,13 +3,16 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { upsertCafeRecordForBrewLog } from "@/lib/cafeMapStorage";
-import { COFFEE_ORIGINS, ORIGIN_STORAGE_KEY } from "@/lib/coffeeOrigins";
+import { upsertCafeRecordForBrewLogRemote } from "@/lib/data/cafeRecordsDb";
+import { addOriginExtras } from "@/lib/data/originExtrasDb";
 import {
-  loadBrewLogsFromStorage,
-  persistBrewLogs,
-  type StoredBrewLog
-} from "@/lib/brewLogStorage";
+  insertBrewLog,
+  updateBrewLog,
+  fetchBrewLogs
+} from "@/lib/data/brewLogsDb";
+import { BREW_LOGS_UPDATED_EVENT, type StoredBrewLog } from "@/lib/brewLogStorage";
+import { COFFEE_ORIGINS } from "@/lib/coffeeOrigins";
+import { createClient } from "@/lib/supabase/client";
 import { compressImageFileForUpload } from "@/lib/compressImageForUpload";
 
 const brewMethods = [
@@ -237,55 +240,71 @@ function BrewNewPageContent() {
       return;
     }
     prevEditingIdRef.current = editingId;
-    const logs = loadBrewLogsFromStorage();
-    const log = logs.find((item) => item.id === editingId);
-    if (!log) {
-      setSaveMessage("指定の記録が見つかりませんでした。履歴から開き直してください。");
-      return;
-    }
-    setSaveMessage("");
-    setBrewMethod(brewMethods.includes(log.method) ? log.method : brewMethods[0]);
-    setBeanName(log.beanName === "未入力" ? "" : log.beanName);
-    setRoastery(log.roastery === "未入力" ? "" : log.roastery);
-    setRoastLevel(roastLevels.includes(log.roastLevel) ? log.roastLevel : roastLevels[0]);
-    setBrewDate(log.date);
-    const origins =
-      log.origins && log.origins.length > 0
-        ? log.origins.map((entry, index) => ({
-            id: Date.now() + index,
-            country: entry.country,
-            ratio: entry.ratio
-          }))
-        : [{ id: Date.now(), country: log.originCountry, ratio: "" }];
-    setOriginEntries(origins);
-    const flavors = log.flavors ?? [];
-    setSelectedFlavors(flavors);
-    setSelectedFamilyIds(familyIdsFromFlavors(flavors));
-    setAftertaste(log.aftertaste);
-    setMemo(log.memo);
-    setOverallRating(
-      log.overallRating >= 1 && log.overallRating <= 5 ? log.overallRating : 4
-    );
-    setFoodPairing(log.foodPairing ?? "");
-    setEquipmentName(log.equipmentName ?? "");
-    setFilterRinse(Boolean(log.filterRinse));
-    setRdtDone(Boolean(log.rdtDone));
-    const usePro =
-      Boolean(log.equipmentName) ||
-      Boolean(log.filterRinse) ||
-      Boolean(log.rdtDone) ||
-      flavors.length > 0;
-    setMode(usePro ? "pro" : "beginner");
-    const lat = log.cafeLat;
-    const lng = log.cafeLng;
-    if (typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng)) {
-      setCafeLinkCoords({ lat, lng });
-    } else {
-      setCafeLinkCoords(null);
-    }
-    setBrewPhotoUrl(log.brewPhotoUrl ?? "");
-    setBrewPhotoError(null);
-    setFormDirty(false);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const supabase = createClient();
+        const logs = await fetchBrewLogs(supabase);
+        if (cancelled) {
+          return;
+        }
+        const log = logs.find((item) => item.id === editingId);
+        if (!log) {
+          setSaveMessage("指定の記録が見つかりませんでした。履歴から開き直してください。");
+          return;
+        }
+        setSaveMessage("");
+        setBrewMethod(brewMethods.includes(log.method) ? log.method : brewMethods[0]);
+        setBeanName(log.beanName === "未入力" ? "" : log.beanName);
+        setRoastery(log.roastery === "未入力" ? "" : log.roastery);
+        setRoastLevel(roastLevels.includes(log.roastLevel) ? log.roastLevel : roastLevels[0]);
+        setBrewDate(log.date);
+        const origins =
+          log.origins && log.origins.length > 0
+            ? log.origins.map((entry, index) => ({
+                id: Date.now() + index,
+                country: entry.country,
+                ratio: entry.ratio
+              }))
+            : [{ id: Date.now(), country: log.originCountry, ratio: "" }];
+        setOriginEntries(origins);
+        const flavors = log.flavors ?? [];
+        setSelectedFlavors(flavors);
+        setSelectedFamilyIds(familyIdsFromFlavors(flavors));
+        setAftertaste(log.aftertaste);
+        setMemo(log.memo);
+        setOverallRating(
+          log.overallRating >= 1 && log.overallRating <= 5 ? log.overallRating : 4
+        );
+        setFoodPairing(log.foodPairing ?? "");
+        setEquipmentName(log.equipmentName ?? "");
+        setFilterRinse(Boolean(log.filterRinse));
+        setRdtDone(Boolean(log.rdtDone));
+        const usePro =
+          Boolean(log.equipmentName) ||
+          Boolean(log.filterRinse) ||
+          Boolean(log.rdtDone) ||
+          flavors.length > 0;
+        setMode(usePro ? "pro" : "beginner");
+        const lat = log.cafeLat;
+        const lng = log.cafeLng;
+        if (typeof lat === "number" && typeof lng === "number" && Number.isFinite(lat) && Number.isFinite(lng)) {
+          setCafeLinkCoords({ lat, lng });
+        } else {
+          setCafeLinkCoords(null);
+        }
+        setBrewPhotoUrl(log.brewPhotoUrl ?? "");
+        setBrewPhotoError(null);
+        setFormDirty(false);
+      } catch {
+        if (!cancelled) {
+          setSaveMessage("記録の読み込みに失敗しました。");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [editingId, resetToNewBrewDefaults]);
 
   useEffect(() => {
@@ -481,33 +500,27 @@ function BrewNewPageContent() {
         requestAnimationFrame(() => resolve());
       });
 
+      const supabase = createClient();
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+      if (!user) {
+        setSaveMessage("ログイン情報を取得できませんでした。再度ログインしてください。");
+        return;
+      }
+
       if (editingId != null) {
-        const existing = loadBrewLogsFromStorage();
+        const existing = await fetchBrewLogs(supabase);
         if (!existing.some((item) => item.id === editingId)) {
           setSaveMessage("更新できませんでした。記録が見つかりません。");
           return;
         }
-        const updated = existing.map((item) =>
-          item.id === editingId ? { ...nextLog, id: editingId } : item
-        );
-        persistBrewLogs(updated);
-        const verify = loadBrewLogsFromStorage();
-        const row = verify.find((item) => item.id === editingId);
-        if (!row) {
-          setSaveMessage("更新の反映を確認できませんでした。マイ・ノートを開き直してください。");
-          return;
-        }
-        upsertCafeRecordForBrewLog({ ...nextLog, id: editingId });
+        const saved = await updateBrewLog(supabase, user.id, { ...nextLog, id: editingId });
+        await upsertCafeRecordForBrewLogRemote(supabase, user.id, saved);
         setSaveMessage("記録を更新しました。");
       } else {
-        const storedLogs = loadBrewLogsFromStorage();
-        persistBrewLogs([nextLog, ...storedLogs]);
-        const verify = loadBrewLogsFromStorage();
-        if (!verify.some((item) => item.id === nextLog.id)) {
-          setSaveMessage("保存の反映を確認できませんでした。もう一度お試しください。");
-          return;
-        }
-        upsertCafeRecordForBrewLog(nextLog);
+        const saved = await insertBrewLog(supabase, user.id, nextLog);
+        await upsertCafeRecordForBrewLogRemote(supabase, user.id, saved);
         setSaveMessage(
           `記録を保存しました。${cleanedOrigins
             .map(
@@ -519,14 +532,12 @@ function BrewNewPageContent() {
         );
       }
 
-      const storedOriginsRaw = localStorage.getItem(ORIGIN_STORAGE_KEY);
-      const storedOrigins = storedOriginsRaw ? (JSON.parse(storedOriginsRaw) as string[]) : [];
-      localStorage.setItem(
-        ORIGIN_STORAGE_KEY,
-        JSON.stringify(
-          Array.from(new Set([...storedOrigins, ...cleanedOrigins.map((item) => item.country)]))
-        )
+      await addOriginExtras(
+        supabase,
+        user.id,
+        cleanedOrigins.map((item) => item.country)
       );
+      window.dispatchEvent(new Event(BREW_LOGS_UPDATED_EVENT));
       setFormDirty(false);
     } catch {
       setSaveMessage("保存中にエラーが発生しました。");

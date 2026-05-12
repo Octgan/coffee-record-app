@@ -1,17 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compressImageFileForUpload } from "@/lib/compressImageForUpload";
 import {
-  CAFE_MAP_STORAGE_KEY,
-  CAFE_MAP_STORAGE_UPDATED_EVENT,
-  SAMPLE_CAFE_RECORDS,
-  coerceCafeRecords,
-  persistCafeRecords,
+  DEFAULT_CAFE_PHOTO_URL,
   type CafeRecord
 } from "@/lib/cafeMapStorage";
+import { fetchCafeRecords, syncCafeRecordsForUser } from "@/lib/data/cafeRecordsDb";
+import { createClient } from "@/lib/supabase/client";
 const CafeMapCanvas = dynamic(() => import("@/components/CafeMapCanvas"), {
   ssr: false,
   loading: () => <div className="h-[62vh] min-h-[420px] bg-amber-100/50" />
@@ -44,13 +41,12 @@ async function reverseGeocodeSuggestion(lat: number, lng: number) {
 }
 
 export default function CafeMapPage() {
-  const router = useRouter();
-  const [records, setRecords] = useState<CafeRecord[]>(SAMPLE_CAFE_RECORDS);
+  const [records, setRecords] = useState<CafeRecord[]>([]);
   const [userPosition, setUserPosition] = useState<[number, number] | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>(defaultCenter);
   const [isLocating, setIsLocating] = useState(false);
   const [locationMessage, setLocationMessage] = useState(
-    "地図をタップするか「＋ ここで記録する」で、抽出の詳細記録へ進みます。"
+    "地図のピンをタップするか、地図をタップして位置を決め、「＋ ここで記録する」でカフェ記録を追加できます。"
   );
   const [candidateName, setCandidateName] = useState("");
   const [candidatePlace, setCandidatePlace] = useState("");
@@ -58,6 +54,8 @@ export default function CafeMapPage() {
   const [registrationCoords, setRegistrationCoords] = useState<[number, number] | null>(null);
   const [pairing, setPairing] = useState("");
   const [editingDraft, setEditingDraft] = useState<CafeRecord | null>(null);
+  /** true のときモーダルは新規ピン追加。false のとき既存レコードの編集 */
+  const [editingIsNew, setEditingIsNew] = useState(false);
   const cafePhotoInputRef = useRef<HTMLInputElement>(null);
   const [cafePhotoUploading, setCafePhotoUploading] = useState(false);
   const [cafePhotoUploadError, setCafePhotoUploadError] = useState<string | null>(null);
@@ -122,46 +120,33 @@ export default function CafeMapPage() {
     }
   };
 
+  const persistRemote = useCallback(async (next: CafeRecord[]) => {
+    const supabase = createClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) {
+      return;
+    }
+    await syncCafeRecordsForUser(supabase, user.id, next);
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const supabase = createClient();
+        setRecords(await fetchCafeRecords(supabase));
+      } catch {
+        setRecords([]);
+      }
+    })();
+  }, []);
+
   useEffect(() => {
     setCafePhotoUploadError(null);
   }, [editingDraft?.id]);
 
-  useEffect(() => {
-    const storedRaw = localStorage.getItem(CAFE_MAP_STORAGE_KEY);
-    if (storedRaw) {
-      try {
-        const parsed = JSON.parse(storedRaw) as unknown;
-        const normalized = coerceCafeRecords(parsed);
-        if (normalized.length > 0) {
-          setRecords(normalized);
-          persistCafeRecords(normalized);
-        }
-      } catch {
-        setRecords(SAMPLE_CAFE_RECORDS);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    const reloadFromStorage = () => {
-      const storedRaw = localStorage.getItem(CAFE_MAP_STORAGE_KEY);
-      if (!storedRaw) {
-        return;
-      }
-      try {
-        const normalized = coerceCafeRecords(JSON.parse(storedRaw) as unknown);
-        if (normalized.length > 0) {
-          setRecords(normalized);
-        }
-      } catch {
-        /* keep current */
-      }
-    };
-    window.addEventListener(CAFE_MAP_STORAGE_UPDATED_EVENT, reloadFromStorage);
-    return () => window.removeEventListener(CAFE_MAP_STORAGE_UPDATED_EVENT, reloadFromStorage);
-  }, []);
-
-  const navigateToBrewFromHere = useCallback(async () => {
+  const openNewRecordModal = useCallback(async () => {
     let lat: number;
     let lng: number;
     let name = candidateName.trim();
@@ -219,19 +204,29 @@ export default function CafeMapPage() {
     const safeName = name || "名称未設定のスポット";
     const safePlace = place || `緯度 ${lat.toFixed(4)}, 経度 ${lng.toFixed(4)}`;
 
-    const params = new URLSearchParams();
-    params.set("from", "cafe-map");
-    params.set("lat", String(lat));
-    params.set("lng", String(lng));
-    params.set("cafe", safeName.slice(0, 400));
-    params.set("place", safePlace.slice(0, 600));
-    if (pairing.trim()) {
-      params.set("pairing", pairing.trim().slice(0, 120));
-    }
+    setCandidateName(safeName);
+    setCandidatePlace(safePlace);
 
-    setLocationMessage("抽出記録の画面へ移動します。店名は「焙煎所／購入店」に入っています。");
-    router.push(`/brew/new?${params.toString()}`);
-  }, [registrationCoords, candidateName, candidatePlace, pairing, router]);
+    const today = new Date().toISOString().slice(0, 10);
+    const nextId = Math.max(0, ...records.map((r) => r.id)) + 1;
+
+    setEditingIsNew(true);
+    setEditingDraft({
+      id: nextId,
+      cafeName: safeName.slice(0, 400),
+      lat,
+      lng,
+      date: today,
+      rating: 4,
+      bean: "",
+      note: "",
+      foodPairing: pairing.trim() ? pairing.trim().slice(0, 120) : undefined,
+      photoUrl: DEFAULT_CAFE_PHOTO_URL
+    });
+    setLocationMessage(
+      "店名・評価・ドリンク名・写真を入力し、「保存」でこのマップの記録一覧に追加されます。"
+    );
+  }, [registrationCoords, candidateName, candidatePlace, pairing, records]);
 
   const centerLabel = useMemo(
     () => `地図の中心: ${mapCenter[0].toFixed(4)}, ${mapCenter[1].toFixed(4)}`,
@@ -244,11 +239,20 @@ export default function CafeMapPage() {
     return `記録する位置: ${registrationCoords[0].toFixed(5)}, ${registrationCoords[1].toFixed(5)}`;
   }, [registrationCoords]);
 
+  const handleRecordMarkerSelect = useCallback((record: CafeRecord) => {
+    setRegistrationCoords([record.lat, record.lng]);
+    setCandidateName(record.cafeName);
+    setCandidatePlace(`${record.cafeName}（マップの店舗ピンを選択中）`);
+    setLocationMessage(
+      `「${record.cafeName}」の位置・店名をセットしました。「＋ ここで記録する」で新しい記録を追加できます。`
+    );
+  }, []);
+
   const handleMapSelectSpot = useCallback(async (lat: number, lng: number) => {
     const pos: [number, number] = [lat, lng];
     setRegistrationCoords(pos);
     setLocationMessage(
-      "タップした位置で記録します。右の「店名」で編集してから「＋ ここで記録する」で抽出記録へ進めます。"
+      "タップした位置で記録します。右の「店名」で直したあと「＋ ここで記録する」で入力画面を開けます。既存のピンをタップするとその店名が入ります。"
     );
     const hint = await reverseGeocodeSuggestion(lat, lng);
     setCandidateName(hint.nameSuggestion ? `マイスポット（${hint.nameSuggestion}）` : "");
@@ -264,9 +268,10 @@ export default function CafeMapPage() {
     }
     const next = records.filter((item) => item.id !== record.id);
     setRecords(next);
-    persistCafeRecords(next);
+    void persistRemote(next);
     if (editingDraft?.id === record.id) {
       setEditingDraft(null);
+      setEditingIsNew(false);
     }
   };
 
@@ -274,11 +279,23 @@ export default function CafeMapPage() {
     if (!editingDraft) {
       return;
     }
-    const updated = records.map((record) =>
-      record.id === editingDraft.id ? editingDraft : record
-    );
-    setRecords(updated);
-    persistCafeRecords(updated);
+    if (editingIsNew) {
+      const next = [editingDraft, ...records];
+      setRecords(next);
+      void persistRemote(next);
+    } else {
+      const updated = records.map((record) =>
+        record.id === editingDraft.id ? editingDraft : record
+      );
+      setRecords(updated);
+      void persistRemote(updated);
+    }
+    setEditingIsNew(false);
+    setEditingDraft(null);
+  };
+
+  const closeEditModal = () => {
+    setEditingIsNew(false);
     setEditingDraft(null);
   };
 
@@ -297,7 +314,7 @@ export default function CafeMapPage() {
           </div>
           <button
             type="button"
-            onClick={() => void navigateToBrewFromHere()}
+            onClick={() => void openNewRecordModal()}
             className="rounded-xl bg-amber-700 px-5 py-3 text-sm font-semibold text-white transition hover:bg-amber-800 disabled:opacity-70"
             disabled={isLocating}
           >
@@ -308,7 +325,7 @@ export default function CafeMapPage() {
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="relative overflow-hidden rounded-2xl border border-amber-200">
             <p className="pointer-events-none absolute bottom-3 left-3 right-3 z-[400] rounded-xl border border-amber-200/80 bg-white/90 px-3 py-2 text-center text-xs text-amber-900/90 shadow sm:left-auto sm:right-3 sm:max-w-sm sm:text-left">
-              地図をタップして位置を決め、店名を直してから「＋ ここで記録する」で抽出記録へ。保存するとマイ・ノートとこのマップの両方に反映されます。
+              地図をタップするか店のピンをタップして位置と店名を決め、「＋ ここで記録する」で記録を追加します。保存するとこのマップの一覧に反映されます。
             </p>
             <CafeMapCanvas
               records={records}
@@ -316,6 +333,7 @@ export default function CafeMapPage() {
               userPosition={userPosition}
               registrationCoords={registrationCoords}
               onMapClick={handleMapSelectSpot}
+              onRecordMarkerSelect={handleRecordMarkerSelect}
             />
           </div>
 
@@ -327,7 +345,7 @@ export default function CafeMapPage() {
 
             <div className="mt-4 space-y-3">
               <label className="block rounded-xl border border-amber-200 bg-white p-3">
-                <span className="text-xs font-semibold text-amber-700">店名（抽出記録の「焙煎所／購入店」に入ります）</span>
+                <span className="text-xs font-semibold text-amber-700">店名（記録モーダルの「店名」に最初から入ります）</span>
                 <input
                   type="text"
                   value={candidateName}
@@ -337,7 +355,7 @@ export default function CafeMapPage() {
                   autoComplete="off"
                 />
                 <p className="mt-2 text-xs leading-relaxed text-amber-900/65">
-                  位置は地図のタップまたは「＋」での現在地取得で決まります。名前だけここで整えてから記録画面へ進んでください。
+                  位置は地図のタップ・店ピンのタップ、または「＋」での現在地取得で決まります。名前を整えてから「＋ ここで記録する」で入力画面を開いてください。
                 </p>
               </label>
               <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/80 p-3">
@@ -347,7 +365,7 @@ export default function CafeMapPage() {
                 </p>
               </div>
               <div className="rounded-xl border border-amber-200 bg-white p-3">
-                <p className="text-xs font-semibold text-amber-700">お供（任意・記録画面に引き継ぎ）</p>
+                <p className="text-xs font-semibold text-amber-700">お供（任意・記録モーダルに引き継ぎ）</p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {pairingTags.map((tag) => (
                     <button
@@ -391,7 +409,10 @@ export default function CafeMapPage() {
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={() => setEditingDraft({ ...record })}
+                      onClick={() => {
+                        setEditingIsNew(false);
+                        setEditingDraft({ ...record });
+                      }}
                       className="rounded-md border border-amber-600 bg-amber-700 px-2 py-1 text-xs font-semibold text-white transition hover:bg-amber-800"
                     >
                       編集
@@ -421,18 +442,20 @@ export default function CafeMapPage() {
           >
             <div className="flex items-start justify-between gap-2">
               <h2 id="cafe-edit-title" className="text-lg font-bold text-amber-950">
-                スポットを編集
+                {editingIsNew ? "新しいカフェ記録" : "スポットを編集"}
               </h2>
               <button
                 type="button"
-                onClick={() => setEditingDraft(null)}
+                onClick={closeEditModal}
                 className="shrink-0 rounded-md border border-amber-300 px-2 py-1 text-xs text-amber-900 hover:bg-amber-50"
               >
                 閉じる
               </button>
             </div>
             <p className="mt-1 text-xs text-amber-800">
-              位置の変更は、マップで新しく「＋ ここで記録する」から記録し直すか、いったん削除してからやり直してください。
+              {editingIsNew
+                ? "座標はこの画面を開いたときの位置です。変えたい場合は閉じて地図で位置を選び直してから、もう一度「＋ ここで記録する」を押してください。"
+                : "位置の変更は、マップで新しく「＋ ここで記録する」から記録し直すか、いったん削除してからやり直してください。"}
             </p>
 
             <div className="mt-4 space-y-3 text-sm">
@@ -576,11 +599,11 @@ export default function CafeMapPage() {
                 onClick={saveEditedRecord}
                 className="rounded-lg bg-amber-700 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-800"
               >
-                変更を保存
+                {editingIsNew ? "保存" : "変更を保存"}
               </button>
               <button
                 type="button"
-                onClick={() => setEditingDraft(null)}
+                onClick={closeEditModal}
                 className="rounded-lg border border-amber-300 px-4 py-2 text-sm font-semibold text-amber-900 transition hover:bg-amber-50"
               >
                 キャンセル

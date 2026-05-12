@@ -91,6 +91,10 @@ const navItems: NavItem[] = [
 export default function AppTabBar() {
   const pathname = usePathname() ?? "/";
 
+  if (pathname.startsWith("/login")) {
+    return null;
+  }
+
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-amber-900/20 bg-white/95 shadow-[0_-4px_24px_rgba(120,53,15,0.08)] backdrop-blur-md pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5">
       <ul

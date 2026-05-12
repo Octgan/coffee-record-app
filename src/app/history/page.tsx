@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { loadBrewLogsFromStorage, SAMPLE_BREW_LOGS, type StoredBrewLog } from "@/lib/brewLogStorage";
+import { BREW_LOGS_UPDATED_EVENT, type StoredBrewLog } from "@/lib/brewLogStorage";
+import { fetchBrewLogs } from "@/lib/data/brewLogsDb";
+import { createClient } from "@/lib/supabase/client";
 
 const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"];
 const monthOptions = [
@@ -117,10 +119,21 @@ export default function HistoryPage() {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
-  const [logs, setLogs] = useState<StoredBrewLog[]>(() => [...SAMPLE_BREW_LOGS]);
+  const [logs, setLogs] = useState<StoredBrewLog[]>([]);
 
   useEffect(() => {
-    setLogs(loadBrewLogsFromStorage());
+    const load = async () => {
+      try {
+        const supabase = createClient();
+        setLogs(await fetchBrewLogs(supabase));
+      } catch {
+        setLogs([]);
+      }
+    };
+    void load();
+    const onUpdated = () => void load();
+    window.addEventListener(BREW_LOGS_UPDATED_EVENT, onUpdated);
+    return () => window.removeEventListener(BREW_LOGS_UPDATED_EVENT, onUpdated);
   }, []);
 
   const logsByDate = useMemo(() => {

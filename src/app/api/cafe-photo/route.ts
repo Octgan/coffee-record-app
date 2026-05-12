@@ -1,4 +1,7 @@
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
+import type { Database } from "@/lib/database.types";
 
 const MAX_BYTES = 6 * 1024 * 1024;
 
@@ -12,10 +15,36 @@ function isAllowedImageType(mime: string): boolean {
 }
 
 /**
- * カフェ記録用の「アップロード」: 画像を受け取り、検証後に data URL として返す。
- * ブラウザの localStorage に載せる前提で、クライアント側で事前圧縮することを推奨。
+ * カフェ／抽出記録用: 画像を検証後 data URL として返す（ログインユーザーのみ）。
  */
 export async function POST(request: NextRequest) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !supabaseKey) {
+    return NextResponse.json({ error: "サーバー設定が不完全です。" }, { status: 503 });
+  }
+
+  const cookieStore = await cookies();
+  const supabase = createServerClient<Database>(supabaseUrl, supabaseKey, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value, options }) =>
+          cookieStore.set(name, value, options)
+        );
+      }
+    }
+  });
+
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "ログインが必要です。" }, { status: 401 });
+  }
+
   let formData: FormData;
   try {
     formData = await request.formData();
