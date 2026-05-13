@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import OnboardingTutorial from "@/components/OnboardingTutorial";
 import { createClient } from "@/lib/supabase/client";
 
 const primaryBtn =
@@ -15,6 +17,17 @@ const secondarySoftBtn =
 
 export default function DashboardPage() {
   const router = useRouter();
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const supabase = createClient();
+      const {
+        data: { user }
+      } = await supabase.auth.getUser();
+      setUserId(user?.id ?? null);
+    })();
+  }, []);
 
   const handleSignOut = async () => {
     const supabase = createClient();
@@ -25,6 +38,7 @@ export default function DashboardPage() {
 
   return (
     <main className="relative flex min-h-screen w-full flex-col justify-center bg-gradient-to-b from-amber-50/95 via-amber-50/60 to-amber-100/50 px-[2.5vw] py-10 sm:px-6 sm:py-14">
+      {userId ? <OnboardingTutorial userId={userId} /> : null}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-[radial-gradient(ellipse_80%_60%_at_50%_-20%,rgba(251,191,36,0.35),transparent)]"

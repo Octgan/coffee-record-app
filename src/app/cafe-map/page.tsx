@@ -406,6 +406,11 @@ export default function CafeMapPage() {
                       {record.foodPairing ? `🍰 ${record.foodPairing}` : ""}
                     </span>
                   </div>
+                  {record.bean.trim() !== "" && record.bean !== "未入力" && (
+                    <p className="mt-1 text-xs text-amber-800/90">
+                      ドリンク / 豆の名前: {record.bean}
+                    </p>
+                  )}
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -500,7 +505,10 @@ export default function CafeMapPage() {
                 </select>
               </label>
               <label className="flex flex-col gap-1 font-medium text-amber-900">
-                豆・ドリンク
+                <span>ドリンク / 豆の名前</span>
+                <span className="text-xs font-normal text-amber-800/90">
+                  メニュー名・レシピ名・銘柄など、短く書いておくとピン表示にも使われます。
+                </span>
                 <input
                   type="text"
                   value={editingDraft.bean}
@@ -508,6 +516,7 @@ export default function CafeMapPage() {
                     setEditingDraft((d) => (d ? { ...d, bean: event.target.value } : d))
                   }
                   className="rounded-lg border border-amber-200 px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  placeholder="例: アイスラテ / エチオピア イルガチェフェ"
                 />
               </label>
               <div>

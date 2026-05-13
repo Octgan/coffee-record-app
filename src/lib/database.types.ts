@@ -21,6 +21,9 @@ export type BrewLogRow = {
   cafe_lat: number | null;
   cafe_lng: number | null;
   brew_photo_url: string | null;
+  water_temp_c: number | null;
+  bloom_time_sec: number | null;
+  coffee_maker_course: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -73,6 +76,9 @@ export type Database = {
           cafe_lat?: number | null;
           cafe_lng?: number | null;
           brew_photo_url?: string | null;
+          water_temp_c?: number | null;
+          bloom_time_sec?: number | null;
+          coffee_maker_course?: string | null;
         };
         Update: Partial<Omit<BrewLogRow, "id" | "user_id">>;
         Relationships: [];

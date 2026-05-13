@@ -47,7 +47,16 @@ export function brewRowToStoredLog(row: BrewRow): StoredBrewLog {
     ...(row.cafe_lat != null && row.cafe_lng != null
       ? { cafeLat: row.cafe_lat, cafeLng: row.cafe_lng }
       : {}),
-    ...(row.brew_photo_url ? { brewPhotoUrl: row.brew_photo_url } : {})
+    ...(row.brew_photo_url ? { brewPhotoUrl: row.brew_photo_url } : {}),
+    ...(typeof row.water_temp_c === "number" && !Number.isNaN(row.water_temp_c)
+      ? { waterTempC: row.water_temp_c }
+      : {}),
+    ...(typeof row.bloom_time_sec === "number" && !Number.isNaN(row.bloom_time_sec)
+      ? { bloomTimeSec: row.bloom_time_sec }
+      : {}),
+    ...(row.coffee_maker_course != null && String(row.coffee_maker_course).trim() !== ""
+      ? { coffeeMakerCourse: String(row.coffee_maker_course).trim() }
+      : {})
   };
 }
 
@@ -71,7 +80,10 @@ function storedLogToInsert(log: StoredBrewLog, userId: string): Database["public
     memo: log.memo,
     cafe_lat: log.cafeLat ?? null,
     cafe_lng: log.cafeLng ?? null,
-    brew_photo_url: log.brewPhotoUrl ?? null
+    brew_photo_url: log.brewPhotoUrl ?? null,
+    water_temp_c: log.waterTempC ?? null,
+    bloom_time_sec: log.bloomTimeSec ?? null,
+    coffee_maker_course: log.coffeeMakerCourse ?? null
   };
 }
 
@@ -127,6 +139,9 @@ export async function updateBrewLog(
       cafe_lat: log.cafeLat ?? null,
       cafe_lng: log.cafeLng ?? null,
       brew_photo_url: log.brewPhotoUrl ?? null,
+      water_temp_c: log.waterTempC ?? null,
+      bloom_time_sec: log.bloomTimeSec ?? null,
+      coffee_maker_course: log.coffeeMakerCourse ?? null,
       updated_at: new Date().toISOString()
     })
     .eq("id", log.id)

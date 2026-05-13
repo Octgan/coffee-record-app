@@ -145,7 +145,7 @@ export default function CafeMapCanvas({
                   <p className="font-semibold text-amber-900">{record.cafeName}</p>
                   <p className="text-xs text-amber-800">{record.date}</p>
                   <p className="text-sm">評価: {"★".repeat(record.rating)}</p>
-                  <p className="text-sm">豆: {record.bean}</p>
+                  <p className="text-sm">ドリンク: {record.bean}</p>
                   <p className="text-sm">
                     お供: {record.foodPairing ? `🍰 ${record.foodPairing}` : "未入力"}
                   </p>

@@ -29,6 +29,12 @@ export type StoredBrewLog = {
   cafeLng?: number;
   /** 抽出記録用の写真（data URL 可）。カフェマップのピン写真にも流用 */
   brewPhotoUrl?: string;
+  /** お湯の温度（°C）。プロモード・該当抽出のみ。コーヒーメーカー時は保存時 0 */
+  waterTempC?: number;
+  /** 蒸らし時間（秒）。コーヒーメーカー時は保存時 0 */
+  bloomTimeSec?: number;
+  /** コーヒーメーカーのコース/モード（マイルド等）。該当方法以外は未使用 */
+  coffeeMakerCourse?: string | null;
 };
 
 export function normalizeMapCountryName(name: unknown) {
@@ -80,6 +86,13 @@ export function coerceStoredBrewLog(raw: unknown): StoredBrewLog | null {
       ? raw.brewPhotoUrl.trim()
       : undefined;
 
+  const waterTempRaw = Number(raw.waterTempC);
+  const bloomRaw = Number(raw.bloomTimeSec);
+  const coffeeMakerCourse =
+    typeof raw.coffeeMakerCourse === "string" && raw.coffeeMakerCourse.trim() !== ""
+      ? raw.coffeeMakerCourse.trim()
+      : undefined;
+
   return {
     id: raw.id,
     date: typeof raw.date === "string" ? raw.date : String(raw.date ?? ""),
@@ -98,7 +111,14 @@ export function coerceStoredBrewLog(raw: unknown): StoredBrewLog | null {
     aftertaste: typeof raw.aftertaste === "string" ? raw.aftertaste : "",
     memo: typeof raw.memo === "string" ? raw.memo : "",
     ...(Number.isFinite(cafeLat) && Number.isFinite(cafeLng) ? { cafeLat, cafeLng } : {}),
-    ...(brewPhotoUrl ? { brewPhotoUrl } : {})
+    ...(brewPhotoUrl ? { brewPhotoUrl } : {}),
+    ...(Number.isFinite(waterTempRaw) && !Number.isNaN(waterTempRaw)
+      ? { waterTempC: Math.round(waterTempRaw) }
+      : {}),
+    ...(Number.isFinite(bloomRaw) && !Number.isNaN(bloomRaw)
+      ? { bloomTimeSec: Math.round(bloomRaw) }
+      : {}),
+    ...(coffeeMakerCourse ? { coffeeMakerCourse } : {})
   };
 }
 

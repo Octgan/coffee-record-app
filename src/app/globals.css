@@ -2,14 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ステータスバー周り・オーバースクロールで白く切れないよう、ルートを濃色で統一 */
 :root {
-  color-scheme: light;
+  --app-chrome-bg: #1a100c;
+  color-scheme: dark;
+}
+
+html {
+  min-height: 100dvh;
+  min-height: 100vh;
+  background-color: var(--app-chrome-bg);
 }
 
 body {
   margin: 0;
+  min-height: 100dvh;
   min-height: 100vh;
-  background: linear-gradient(180deg, #f5f1eb 0%, #ede4d9 100%);
+  background-color: var(--app-chrome-bg);
   color: #2f241d;
   font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
 }

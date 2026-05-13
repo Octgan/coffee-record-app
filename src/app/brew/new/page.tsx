@@ -15,6 +15,8 @@ import { COFFEE_ORIGINS } from "@/lib/coffeeOrigins";
 import { createClient } from "@/lib/supabase/client";
 import { compressImageFileForUpload } from "@/lib/compressImageForUpload";
 
+const COFFEE_BREW_METHOD_MAKER = "コーヒーメーカー";
+
 const brewMethods = [
   "ハンドドリップ",
   "エスプレッソ",
@@ -22,8 +24,22 @@ const brewMethods = [
   "サイフォン",
   "ネルドリップ",
   "コールドブリュー",
-  "エアロプレス"
+  "エアロプレス",
+  COFFEE_BREW_METHOD_MAKER
 ];
+const coffeeMakerCoursePresets = ["マイルド", "ストロング", "アイス", "カフェオレ"] as const;
+
+function parseSmallIntInput(value: string): number | undefined {
+  const t = value.trim();
+  if (t === "") {
+    return undefined;
+  }
+  const n = Number(t);
+  if (!Number.isFinite(n)) {
+    return undefined;
+  }
+  return Math.round(Math.min(32767, Math.max(-32768, n)));
+}
 const brewMethodCards: { value: string; label: string; icon: React.ReactNode }[] = [
   {
     value: "ハンドドリップ",
@@ -97,6 +113,18 @@ const brewMethodCards: { value: string; label: string; icon: React.ReactNode }[]
         <rect x="16" y="8" width="16" height="10" rx="2" strokeWidth="1.8" />
         <rect x="14" y="18" width="20" height="14" rx="3" strokeWidth="1.8" />
         <path d="M18 32h12v6H18z" strokeWidth="1.8" />
+      </svg>
+    )
+  },
+  {
+    value: COFFEE_BREW_METHOD_MAKER,
+    label: "コーヒーメーカー",
+    icon: (
+      <svg viewBox="0 0 48 48" className="h-10 w-10" fill="none" stroke="currentColor">
+        <rect x="10" y="16" width="28" height="18" rx="2" strokeWidth="1.8" />
+        <path d="M14 16V12h20v4" strokeWidth="1.8" />
+        <path d="M24 34v6M18 40h12" strokeWidth="1.8" />
+        <path d="M18 22h12" strokeWidth="1.8" />
       </svg>
     )
   }
@@ -200,6 +228,9 @@ function BrewNewPageContent() {
   const [brewPhotoUrl, setBrewPhotoUrl] = useState("");
   const [brewPhotoUploading, setBrewPhotoUploading] = useState(false);
   const [brewPhotoError, setBrewPhotoError] = useState<string | null>(null);
+  const [waterTempC, setWaterTempC] = useState("");
+  const [bloomTimeSec, setBloomTimeSec] = useState("");
+  const [coffeeMakerCourse, setCoffeeMakerCourse] = useState("");
   const brewPhotoInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const prevEditingIdRef = useRef<number | null>(null);
@@ -229,6 +260,9 @@ function BrewNewPageContent() {
     setCafeLinkCoords(null);
     setBrewPhotoUrl("");
     setBrewPhotoError(null);
+    setWaterTempC("");
+    setBloomTimeSec("");
+    setCoffeeMakerCourse("");
   }, []);
 
   useEffect(() => {
@@ -294,6 +328,9 @@ function BrewNewPageContent() {
           setCafeLinkCoords(null);
         }
         setBrewPhotoUrl(log.brewPhotoUrl ?? "");
+        setWaterTempC(log.waterTempC != null ? String(log.waterTempC) : "");
+        setBloomTimeSec(log.bloomTimeSec != null ? String(log.bloomTimeSec) : "");
+        setCoffeeMakerCourse(log.coffeeMakerCourse ?? "");
         setBrewPhotoError(null);
         setFormDirty(false);
       } catch {
@@ -468,6 +505,9 @@ function BrewNewPageContent() {
       }))
       .filter((entry) => entry.country);
     const fallbackCountry = cleanedOrigins[0]?.country ?? COFFEE_ORIGINS[0].value;
+    const isCoffeeMaker = brewMethod === COFFEE_BREW_METHOD_MAKER;
+    const waterParsed = parseSmallIntInput(waterTempC);
+    const bloomParsed = parseSmallIntInput(bloomTimeSec);
     const nextLog: StoredBrewLog = {
       id: editingId ?? Date.now(),
       date: brewDate,
@@ -490,7 +530,18 @@ function BrewNewPageContent() {
       Number.isFinite(cafeLinkCoords.lng)
         ? { cafeLat: cafeLinkCoords.lat, cafeLng: cafeLinkCoords.lng }
         : {}),
-      ...(brewPhotoUrl.trim() !== "" ? { brewPhotoUrl: brewPhotoUrl.trim() } : {})
+      ...(brewPhotoUrl.trim() !== "" ? { brewPhotoUrl: brewPhotoUrl.trim() } : {}),
+      ...(isCoffeeMaker
+        ? {
+            waterTempC: 0,
+            bloomTimeSec: 0,
+            coffeeMakerCourse: coffeeMakerCourse.trim() || null
+          }
+        : {
+            ...(waterParsed !== undefined ? { waterTempC: waterParsed } : {}),
+            ...(bloomParsed !== undefined ? { bloomTimeSec: bloomParsed } : {}),
+            coffeeMakerCourse: null
+          })
     };
 
     setIsSaving(true);
@@ -576,7 +627,7 @@ function BrewNewPageContent() {
         <form ref={formRef} className="mt-8 space-y-8" onSubmit={handleSubmit}>
           <div className="space-y-4 rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
             <label className="block text-sm font-semibold text-amber-900">抽出方法</label>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {brewMethodCards.map((method) => {
                 const selected = brewMethod === method.value;
                 return (
@@ -598,21 +649,81 @@ function BrewNewPageContent() {
               })}
             </div>
 
+            {brewMethod === COFFEE_BREW_METHOD_MAKER && (
+              <div className="rounded-xl border border-amber-300/80 bg-amber-100/50 p-4">
+                <p className="text-sm font-semibold text-amber-950">
+                  コーヒーメーカーなら、豆と水を入れてコースを選ぶだけで大丈夫です。
+                </p>
+                <p className="mt-2 text-xs leading-relaxed text-amber-900/85">
+                  温度や蒸らしは機器におまかせ。迷ったらメーカーの表示に合わせて、マイルド・ストロング・アイスなどのモードだけ覚えておけば十分なことが多いです。
+                </p>
+                <label className="mt-4 flex flex-col gap-2 text-sm font-medium text-amber-900">
+                  コース / モード（マイルド・ストロング・アイス等）
+                  <div className="flex flex-wrap gap-2">
+                    {coffeeMakerCoursePresets.map((preset) => {
+                      const active = coffeeMakerCourse === preset;
+                      return (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setCoffeeMakerCourse(preset)}
+                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                            active
+                              ? "bg-amber-800 text-white shadow-sm"
+                              : "border border-amber-400 bg-white text-amber-900 hover:bg-amber-50"
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <input
+                    type="text"
+                    list="coffee-maker-course-suggestions"
+                    value={coffeeMakerCourse}
+                    onChange={(event) => setCoffeeMakerCourse(event.target.value)}
+                    className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    placeholder="プリセットを選ぶか、メニュー名を自由入力（例: おかわり濃いめ）"
+                    autoComplete="off"
+                  />
+                  <datalist id="coffee-maker-course-suggestions">
+                    {coffeeMakerCoursePresets.map((preset) => (
+                      <option key={preset} value={preset} />
+                    ))}
+                  </datalist>
+                </label>
+              </div>
+            )}
+
             <div className="rounded-xl border border-amber-200/90 bg-white/80 p-4">
-              <h2 className="text-sm font-semibold text-amber-900">豆の情報</h2>
+              <h2 className="text-sm font-semibold text-amber-900">
+                {cafeLinkCoords ? "豆・ドリンクの情報" : "豆の情報"}
+              </h2>
               <p className="mt-1 text-xs text-amber-900/70">
-                使用した豆のプロフィールを記録できます。
+                {cafeLinkCoords
+                  ? "メニュー名や豆の銘柄などを記録できます。位置を保存するとカフェマップのピンにも流れます。"
+                  : "使用した豆のプロフィールを記録できます。カフェで位置を付けて保存した場合は、マップのピン用にメニュー名も書きやすいです。"}
               </p>
 
               <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <label className="flex flex-col gap-2 text-sm font-medium text-amber-900">
-                  豆の名前
+                  <span>ドリンク / 豆の名前</span>
+                  {cafeLinkCoords && (
+                    <span className="text-xs font-normal text-amber-800/90">
+                      マップのピンでは「ドリンク」として表示されます。
+                    </span>
+                  )}
                   <input
                     type="text"
                     value={beanName}
                     onChange={(event) => setBeanName(event.target.value)}
                     className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    placeholder="例: エチオピア イルガチェフェ"
+                    placeholder={
+                      cafeLinkCoords
+                        ? "例: カフェラテ / 本日のドリップ"
+                        : "例: アイスラテ、エチオピア イルガチェフェ"
+                    }
                   />
                 </label>
 
@@ -786,15 +897,31 @@ function BrewNewPageContent() {
             <div className="space-y-6">
               <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
                 <h2 className="text-base font-semibold text-amber-900">基本条件</h2>
-                <div className="mt-4 grid gap-4 sm:grid-cols-3">
-                  <label className="flex flex-col gap-2 text-sm font-medium text-amber-900">
-                    お湯の温度 (°C)
-                    <input
-                      type="number"
-                      className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                      placeholder="92"
-                    />
-                  </label>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {brewMethod !== COFFEE_BREW_METHOD_MAKER && (
+                    <>
+                      <label className="flex flex-col gap-2 text-sm font-medium text-amber-900">
+                        水の温度 (°C)
+                        <input
+                          type="number"
+                          value={waterTempC}
+                          onChange={(event) => setWaterTempC(event.target.value)}
+                          className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                          placeholder="92"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-sm font-medium text-amber-900">
+                        蒸らし時間 (秒)
+                        <input
+                          type="number"
+                          value={bloomTimeSec}
+                          onChange={(event) => setBloomTimeSec(event.target.value)}
+                          className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                          placeholder="40"
+                        />
+                      </label>
+                    </>
+                  )}
                   <label className="flex flex-col gap-2 text-sm font-medium text-amber-900">
                     気温 (°C)
                     <input
@@ -1102,7 +1229,7 @@ function BrewNewPageContent() {
           <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
             <h2 className="text-sm font-semibold text-amber-900">写真（任意）</h2>
             <p className="mt-1 text-xs text-amber-900/70">
-              アルバムから選ぶとアップロードされ、マイ・ノートとカフェマップのピンにも反映されます。
+              この抽出記録にだけ紐づく任意の写真です。アルバムから選ぶと検証のうえでアップロードされ、保存するとこの記録と一緒に残ります。
             </p>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-stretch">
               <input

@@ -90,5 +90,9 @@ CREATE POLICY "origin_extras_select_own" ON public.user_origin_extras FOR SELECT
 CREATE POLICY "origin_extras_insert_own" ON public.user_origin_extras FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
+-- upsert の ON CONFLICT DO UPDATE で必要
+CREATE POLICY "origin_extras_update_own" ON public.user_origin_extras FOR UPDATE TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
 CREATE POLICY "origin_extras_delete_own" ON public.user_origin_extras FOR DELETE TO authenticated
   USING (auth.uid() = user_id);
