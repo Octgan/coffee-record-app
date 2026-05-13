@@ -18,6 +18,7 @@ const secondarySoftBtn =
 export default function DashboardPage() {
   const router = useRouter();
   const [userId, setUserId] = useState<string | null>(null);
+  const [replayTutorial, setReplayTutorial] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -38,7 +39,30 @@ export default function DashboardPage() {
 
   return (
     <main className="relative flex min-h-screen w-full flex-col justify-center bg-gradient-to-b from-amber-50/95 via-amber-50/60 to-amber-100/50 px-[2.5vw] py-10 sm:px-6 sm:py-14">
-      {userId ? <OnboardingTutorial userId={userId} /> : null}
+      {userId ? (
+        <OnboardingTutorial
+          userId={userId}
+          replay={replayTutorial}
+          onReplayClose={() => setReplayTutorial(false)}
+        />
+      ) : null}
+
+      {userId ? (
+        <button
+          type="button"
+          onClick={() => setReplayTutorial(true)}
+          className="absolute right-[max(0.75rem,env(safe-area-inset-right))] top-[max(0.75rem,env(safe-area-inset-top))] z-30 flex h-11 w-11 items-center justify-center rounded-full border border-amber-800/25 bg-white/90 text-amber-900 shadow-md shadow-amber-950/10 backdrop-blur-sm transition hover:border-amber-700/50 hover:bg-white hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+          aria-label="チュートリアル（使い方）を開く"
+        >
+          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M9.09 9a3 3 0 1 1 5.83 1c0 2-3 2-3 4m0 3h.01M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"
+            />
+          </svg>
+        </button>
+      ) : null}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-48 bg-[radial-gradient(ellipse_80%_60%_at_50%_-20%,rgba(251,191,36,0.35),transparent)]"
