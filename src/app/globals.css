@@ -2,30 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ステータスバー周り・オーバースクロールで白く切れないよう、ルート背景は濃色のまま */
+/* 明るいノートのような世界観（暖かいベージュ系） */
 :root {
-  --app-chrome-bg: #1a100c;
-  /* ダークを指定すると UA が入力欄までダーク描画するため指定しない（theme-color / html 背景は維持） */
+  --app-paper: #f5f1eb;
+  --app-paper-deep: #ede4d9;
+  color-scheme: light;
 }
 
 html {
   min-height: 100dvh;
   min-height: 100vh;
-  background-color: var(--app-chrome-bg);
+  background-color: var(--app-paper);
 }
 
 body {
   margin: 0;
   min-height: 100dvh;
   min-height: 100vh;
-  background-color: var(--app-chrome-bg);
+  background: linear-gradient(180deg, #faf8f5 0%, var(--app-paper) 45%, var(--app-paper-deep) 100%);
   color: #2f241d;
   font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
 }
 
 /*
- * フォームは常に読みやすい薄ベージュ／白＋濃色文字（color-scheme に依存しない）
- * チェック・ラジオ・ファイル等は既存 UI のため除外
+ * 入力欄は白系背景＋黒系文字で常に読みやすく（ブラウザのダーク推測に依存しない）
  */
 input:where(
     :not([type]),
@@ -44,10 +44,10 @@ input:where(
   ),
 textarea,
 select {
-  background-color: #fffdf8 !important;
-  color: #1c1410 !important;
+  background-color: #ffffff !important;
+  color: #111111 !important;
   color-scheme: light;
-  caret-color: #1c1410;
+  caret-color: #111111;
 }
 
 input:where(
@@ -66,11 +66,11 @@ input:where(
     [type="week"]
   )::placeholder,
 textarea::placeholder {
-  color: #6b5344;
+  color: #5c5348;
   opacity: 1;
 }
 
 select option {
-  background-color: #fffdf8;
-  color: #1c1410;
+  background-color: #ffffff;
+  color: #111111;
 }
