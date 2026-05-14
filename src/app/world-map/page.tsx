@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ComposableMap, Geographies, Geography } from "react-simple-maps";
 import { COFFEE_ORIGINS } from "@/lib/coffeeOrigins";
 import {
+  BREW_LOGS_UPDATED_EVENT,
   getLogOriginCountries,
   logMatchesCountryKey,
   normalizeMapCountryName,
@@ -26,22 +27,60 @@ export default function WorldMapPage() {
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+
     const load = async () => {
       try {
-        const supabase = createClient();
         const [parsedLogs, extras] = await Promise.all([
           fetchBrewLogs(supabase),
           fetchOriginExtras(supabase)
         ]);
+        if (cancelled) {
+          return;
+        }
         setLogs(parsedLogs);
         const originFromLogs = parsedLogs.flatMap((log) => getLogOriginCountries(log));
         setVisitedOrigins(Array.from(new Set([...originFromLogs, ...extras])));
       } catch {
-        setLogs([]);
-        setVisitedOrigins([]);
+        if (!cancelled) {
+          setLogs([]);
+          setVisitedOrigins([]);
+        }
       }
     };
+
     void load();
+
+    const onBrewLogsUpdated = () => {
+      void load();
+    };
+    window.addEventListener(BREW_LOGS_UPDATED_EVENT, onBrewLogsUpdated);
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void load();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    const channel = supabase
+      .channel("brew_logs_world_map")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "brew_logs" },
+        () => {
+          void load();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(BREW_LOGS_UPDATED_EVENT, onBrewLogsUpdated);
+      document.removeEventListener("visibilitychange", onVisibility);
+      void supabase.removeChannel(channel);
+    };
   }, []);
 
   const visitedSet = useMemo(

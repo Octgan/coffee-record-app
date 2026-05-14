@@ -31,8 +31,9 @@ const TUTORIAL_ILLUSTRATION_DATA_URI = `data:image/svg+xml;charset=utf-8,${encod
 )}`;
 
 type TutorialSlide = {
-  kicker: string;
-  text: string;
+  title: string;
+  /** スマホで読みやすい短いブロックごとの段落（\n で行内改行可） */
+  paragraphs: string[];
   imageSrc: string;
   imageAlt: string;
   /** 1枚目が失敗したときの代替 URL（任意） */
@@ -41,8 +42,11 @@ type TutorialSlide = {
 
 const SLIDES: TutorialSlide[] = [
   {
-    kicker: "はじめに",
-    text: "ようこそ！あなただけのコーヒー記録帳へ。日々の美味しい一杯を残しましょう。",
+    title: "ようこそ、あなただけの記録帳へ",
+    paragraphs: [
+      "毎日の一杯を、もっと特別なものに。",
+      "ここは、あなたが淹れたコーヒーの香りと\n記憶をそっと綴っておく場所です。"
+    ],
     imageSrc:
       "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=900&q=80",
     imageAlt: "カップに注がれたコーヒーと穏やかなカフェの雰囲気",
@@ -50,8 +54,11 @@ const SLIDES: TutorialSlide[] = [
       "https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&fit=crop&w=900&q=80"
   },
   {
-    kicker: "抽出記録",
-    text: "抽出記録：豆の量や温度を細かくメモして、最高のレシピを見つけましょう。",
+    title: "一杯の物語を残しましょう",
+    paragraphs: [
+      "豆の種類や淹れ方、その時の気分。",
+      "自由に記録して、自分好みの\n「最高の一杯」を見つけてみてください。"
+    ],
     imageSrc:
       "https://images.unsplash.com/photo-1497935586351-b67a49e012bf?auto=format&fit=crop&w=900&q=80",
     imageAlt: "ハンドドリップでコーヒーを抽出しているイメージ",
@@ -59,13 +66,25 @@ const SLIDES: TutorialSlide[] = [
       "https://images.unsplash.com/photo-1511920170033-f8396924c348?auto=format&fit=crop&w=900&q=80"
   },
   {
-    kicker: "カフェマップ",
-    text: "カフェマップ：訪れたお気に入りのカフェを地図にピン留め。あなただけの地図を作れます。",
+    title: "世界と街を、コーヒーで繋ぐ",
+    paragraphs: [
+      "訪れたカフェや、豆の産地を地図に。",
+      "あなたのコーヒーライフが広がるほど、\n地図が鮮やかに彩られていきます。"
+    ],
     imageSrc:
       "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=900&q=80",
-    imageAlt: "カフェの店内の雰囲気",
+    imageAlt: "カフェの店内と、地図で旅するコーヒーのイメージ",
     imageSrcFallback:
       "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&w=900&q=80"
+  },
+  {
+    title: "それでは、コーヒーの旅をお楽しみください",
+    paragraphs: [],
+    imageSrc:
+      "https://images.unsplash.com/photo-1447936433408-61ad784e2fc4?auto=format&fit=crop&w=900&q=80",
+    imageAlt: "コーヒーを丁寧にハンドドリップで淹れる様子",
+    imageSrcFallback:
+      "https://images.unsplash.com/photo-1506929562872-bb421503ef21?auto=format&fit=crop&w=900&q=80"
   }
 ];
 
@@ -86,18 +105,26 @@ function useTutorialVariants(reduceMotion: boolean) {
         container: {
           hidden: {},
           visible: {
-            transition: { delayChildren: 0.06, staggerChildren: 0.06 }
+            transition: { delayChildren: 0.05, staggerChildren: 0.08 }
           }
+        },
+        tutorialLabel: {
+          hidden: { opacity: 0 },
+          visible: { opacity: 0.8, transition: softTween }
         },
         image: {
           hidden: { opacity: 0 },
           visible: { opacity: 1, transition: softTween }
         },
-        kicker: {
+        title: {
           hidden: { opacity: 0 },
           visible: { opacity: 1, transition: softTween }
         },
-        body: {
+        paragraph: {
+          hidden: { opacity: 0 },
+          visible: { opacity: 1, transition: softTween }
+        },
+        cta: {
           hidden: { opacity: 0 },
           visible: { opacity: 1, transition: softTween }
         }
@@ -108,9 +135,22 @@ function useTutorialVariants(reduceMotion: boolean) {
         hidden: {},
         visible: {
           transition: {
-            delayChildren: 0.2,
-            staggerChildren: 0.14
+            delayChildren: 0.1,
+            staggerChildren: 0.12
           }
+        }
+      },
+      tutorialLabel: {
+        hidden: {
+          opacity: 0,
+          y: 14,
+          filter: "blur(5px)"
+        },
+        visible: {
+          opacity: 0.8,
+          y: 0,
+          filter: "blur(0px)",
+          transition: { ...SPRING, stiffness: 110, damping: 22 }
         }
       },
       image: {
@@ -122,33 +162,44 @@ function useTutorialVariants(reduceMotion: boolean) {
           transition: SPRING
         }
       },
-      kicker: {
-        hidden: {
-          opacity: 0,
-          y: 18,
-          filter: "blur(6px)",
-          letterSpacing: "0.32em"
-        },
-        visible: {
-          opacity: 1,
-          y: 0,
-          filter: "blur(0px)",
-          letterSpacing: "0.2em",
-          transition: SPRING
-        }
-      },
-      body: {
+      title: {
         hidden: {
           opacity: 0,
           y: 22,
           filter: "blur(7px)",
-          letterSpacing: "0.1em"
+          letterSpacing: "0.06em"
         },
         visible: {
           opacity: 1,
           y: 0,
           filter: "blur(0px)",
           letterSpacing: "0.02em",
+          transition: SPRING
+        }
+      },
+      paragraph: {
+        hidden: {
+          opacity: 0,
+          y: 18,
+          filter: "blur(6px)"
+        },
+        visible: {
+          opacity: 1,
+          y: 0,
+          filter: "blur(0px)",
+          transition: SPRING
+        }
+      },
+      cta: {
+        hidden: {
+          opacity: 0,
+          y: 16,
+          filter: "blur(5px)"
+        },
+        visible: {
+          opacity: 1,
+          y: 0,
+          filter: "blur(0px)",
           transition: SPRING
         }
       }
@@ -170,9 +221,16 @@ type TutorialStepMotionProps = {
   step: number;
   reduceMotion: boolean;
   variants: ReturnType<typeof useTutorialVariants>;
+  onComplete: () => void;
 };
 
-function TutorialStepMotion({ slide, step, reduceMotion, variants }: TutorialStepMotionProps) {
+function TutorialStepMotion({
+  slide,
+  step,
+  reduceMotion,
+  variants,
+  onComplete
+}: TutorialStepMotionProps) {
   const sources = useMemo(() => buildSourceChain(slide), [slide]);
   const [attempt, setAttempt] = useState(0);
   const [imageReady, setImageReady] = useState(false);
@@ -213,50 +271,85 @@ function TutorialStepMotion({ slide, step, reduceMotion, variants }: TutorialSte
     setImageReady(true);
   }, []);
 
+  const showTutorialLabel = step >= 1 && step < SLIDES.length - 1;
+  const isClosingSlide = step === SLIDES.length - 1;
+
   return (
-    <motion.div
+    <div
       key={step}
-      className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 py-4 sm:gap-8"
-      initial="hidden"
-      animate={showContent ? "visible" : "hidden"}
-      variants={variants.container}
+      className="flex min-h-0 w-full max-w-lg flex-1 flex-col items-center justify-center gap-4 px-1 py-2 sm:gap-5 sm:px-0"
     >
       <motion.div
-        variants={variants.image}
-        className="relative w-full max-w-[min(100%,20rem)] shrink-0 overflow-hidden rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.45)] ring-1 ring-amber-200/25 sm:max-w-xs"
-        style={{ willChange: reduceMotion ? undefined : "opacity, transform, filter" }}
+        className="flex w-full flex-col items-center gap-4 sm:gap-5"
+        initial="hidden"
+        animate={showContent ? "visible" : "hidden"}
+        variants={variants.container}
       >
-        <img
-          ref={imgRef}
-          key={`${step}-${attempt}-${displaySrc.slice(0, 48)}`}
-          src={displaySrc}
-          alt={slide.imageAlt}
-          className="aspect-[4/3] h-auto w-full object-cover"
-          decoding="async"
-          loading="eager"
-          fetchPriority="high"
-          onLoad={handleImageLoad}
-          onError={handleImageError}
-        />
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-white/5" />
-      </motion.div>
+        {showTutorialLabel && (
+          <motion.p
+            key={`tutorial-label-${step}`}
+            variants={variants.tutorialLabel}
+            className="w-full max-w-[min(100%,22rem)] text-center text-xs font-normal tracking-[0.2em] text-amber-400 sm:max-w-md"
+            style={{ willChange: reduceMotion ? undefined : "opacity, transform, filter" }}
+          >
+            Tutorial
+          </motion.p>
+        )}
+        <motion.div
+          variants={variants.image}
+          className="relative aspect-[4/3] w-full max-w-full shrink-0 overflow-hidden rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.45)] ring-1 ring-amber-200/25 sm:max-w-sm"
+          style={{ willChange: reduceMotion ? undefined : "opacity, transform, filter" }}
+        >
+          <img
+            ref={imgRef}
+            key={`${step}-${attempt}-${displaySrc.slice(0, 48)}`}
+            src={displaySrc}
+            alt={slide.imageAlt}
+            className="h-full w-full max-w-full object-cover"
+            decoding="async"
+            loading="eager"
+            fetchPriority="high"
+            onLoad={handleImageLoad}
+            onError={handleImageError}
+          />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-white/5" />
+        </motion.div>
 
-      <motion.p
-        variants={variants.kicker}
-        className="max-w-md text-center text-xs font-semibold text-amber-400/95"
-        style={{ willChange: reduceMotion ? undefined : "opacity, transform, filter" }}
-      >
-        {slide.kicker}
-      </motion.p>
-      <motion.h2
-        id="onboarding-tutorial-heading"
-        variants={variants.body}
-        className="mt-2 max-w-md text-center text-[clamp(1.05rem,4vw,1.3rem)] font-semibold leading-relaxed text-amber-50 sm:text-lg"
-        style={{ willChange: reduceMotion ? undefined : "opacity, transform, filter" }}
-      >
-        {slide.text}
-      </motion.h2>
-    </motion.div>
+        <motion.h2
+          id="onboarding-tutorial-heading"
+          variants={variants.title}
+          className={
+            isClosingSlide
+              ? "w-full max-w-[min(100%,24rem)] text-balance text-center text-[clamp(1.2rem,5.2vw,1.75rem)] font-semibold leading-relaxed tracking-normal text-amber-50 break-keep sm:max-w-lg sm:text-2xl"
+              : "w-full max-w-[min(100%,22rem)] text-balance text-center text-[clamp(1.1rem,4.4vw,1.45rem)] font-semibold leading-relaxed tracking-normal text-amber-50 break-keep sm:max-w-md sm:text-xl"
+          }
+          style={{ willChange: reduceMotion ? undefined : "opacity, transform, filter" }}
+        >
+          {slide.title}
+        </motion.h2>
+        {slide.paragraphs.map((block, index) => (
+          <motion.p
+            key={`${step}-p-${index}`}
+            variants={variants.paragraph}
+            className="w-full max-w-[min(100%,22rem)] text-balance whitespace-pre-line text-center text-[0.95rem] font-medium leading-loose text-amber-100/90 break-keep sm:max-w-md sm:text-base sm:leading-loose"
+            style={{ willChange: reduceMotion ? undefined : "opacity, transform, filter" }}
+          >
+            {block}
+          </motion.p>
+        ))}
+        {isClosingSlide && (
+          <motion.button
+            type="button"
+            variants={variants.cta}
+            onClick={onComplete}
+            className="mt-3 min-h-[48px] w-full max-w-[min(100%,20rem)] rounded-xl bg-gradient-to-b from-amber-500 to-amber-700 px-6 text-sm font-bold text-amber-950 shadow-lg shadow-black/35 transition hover:from-amber-400 hover:to-amber-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 sm:max-w-xs"
+            style={{ willChange: reduceMotion ? undefined : "opacity, transform, filter" }}
+          >
+            記録をはじめる
+          </motion.button>
+        )}
+      </motion.div>
+    </div>
   );
 }
 
@@ -333,7 +426,7 @@ export default function OnboardingTutorial({
 
   return (
     <div
-      className="fixed inset-0 z-[220] flex flex-col bg-gradient-to-b from-[#120805] via-[#1f130d] to-[#0f0805] text-amber-50/95"
+      className="fixed inset-0 z-[220] flex h-[100dvh] max-h-[100dvh] min-h-0 flex-col bg-gradient-to-b from-[#120805] via-[#1f130d] to-[#0f0805] text-amber-50/95"
       role="dialog"
       aria-modal="true"
       aria-labelledby="onboarding-tutorial-heading"
@@ -341,14 +434,18 @@ export default function OnboardingTutorial({
       <div className="pointer-events-none absolute inset-0 opacity-[0.09] bg-[radial-gradient(ellipse_75%_55%_at_50%_-5%,rgba(251,191,36,0.55),transparent)]" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/35 to-transparent" />
 
-      <div className="relative flex min-h-0 flex-1 flex-col px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-3 sm:px-8">
-        <p className="text-center text-[0.65rem] font-semibold uppercase tracking-[0.32em] text-amber-400/90">
-          {step + 1} / {SLIDES.length}
-        </p>
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-6 pt-[max(1rem,env(safe-area-inset-top,1rem))] pb-2 sm:px-8">
+        <div className="flex min-h-0 flex-1 flex-col items-stretch justify-center overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
+          <TutorialStepMotion
+            slide={slide}
+            step={step}
+            reduceMotion={reduceMotion}
+            variants={variants}
+            onComplete={finish}
+          />
+        </div>
 
-        <TutorialStepMotion slide={slide} step={step} reduceMotion={reduceMotion} variants={variants} />
-
-        <div className="mt-2 flex justify-center gap-2 pb-1">
+        <div className="mt-1 flex shrink-0 justify-center gap-2 pb-1 pt-2">
           {SLIDES.map((_, i) => (
             <button
               key={i}
@@ -364,7 +461,7 @@ export default function OnboardingTutorial({
         </div>
       </div>
 
-      <div className="relative flex flex-wrap items-center justify-between gap-3 border-t border-amber-900/35 bg-black/15 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-[2px] sm:px-8">
+      <div className="relative flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-amber-900/35 bg-black/15 px-6 py-3 pb-[max(1.25rem,calc(env(safe-area-inset-bottom,0px)+0.75rem))] pt-3 backdrop-blur-[2px] sm:px-8 sm:py-4">
         <button
           type="button"
           onClick={finish}
@@ -387,7 +484,7 @@ export default function OnboardingTutorial({
               onClick={finish}
               className="min-h-[44px] min-w-[7.5rem] rounded-xl bg-gradient-to-b from-amber-500 to-amber-700 px-5 text-sm font-bold text-amber-950 shadow-lg shadow-black/35 transition hover:from-amber-400 hover:to-amber-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
             >
-              はじめる
+              記録をはじめる
             </button>
           )}
         </div>

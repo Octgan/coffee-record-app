@@ -51,7 +51,7 @@ const navItems: NavItem[] = [
   },
   {
     href: "/history",
-    label: "カレンダー",
+    label: "Coffee Calendar",
     match: (path) => path.startsWith("/history"),
     icon: (
       <svg viewBox="0 0 24 24" className={iconClass} fill="none" stroke="currentColor" strokeWidth={2}>

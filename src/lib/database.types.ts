@@ -24,6 +24,9 @@ export type BrewLogRow = {
   water_temp_c: number | null;
   bloom_time_sec: number | null;
   coffee_maker_course: string | null;
+  /** カッピング等: 注湯からブレイクまでの時間など（自由記述） */
+  steep_time_memo: string | null;
+  grind_size: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -79,6 +82,8 @@ export type Database = {
           water_temp_c?: number | null;
           bloom_time_sec?: number | null;
           coffee_maker_course?: string | null;
+          steep_time_memo?: string | null;
+          grind_size?: string | null;
         };
         Update: Partial<Omit<BrewLogRow, "id" | "user_id">>;
         Relationships: [];

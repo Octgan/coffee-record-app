@@ -3,6 +3,9 @@ import type { CafeRecordRow, Database } from "@/lib/database.types";
 import { DEFAULT_CAFE_PHOTO_URL, type CafeRecord } from "@/lib/cafeMapStorage";
 import type { StoredBrewLog } from "@/lib/brewLogStorage";
 
+/** カフェ記録の更新後にカレンダー等が再取得するための同一タブ用イベント */
+export const CAFE_RECORDS_UPDATED_EVENT = "coffee-cafe-records-updated";
+
 type CafeRow = CafeRecordRow;
 
 export function cafeRowToRecord(row: CafeRow): CafeRecord {
@@ -106,4 +109,7 @@ export async function upsertCafeRecordForBrewLogRemote(
 
   const next = idx >= 0 ? records.map((r, i) => (i === idx ? entry : r)) : [entry, ...records];
   await syncCafeRecordsForUser(client, userId, next);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(CAFE_RECORDS_UPDATED_EVENT));
+  }
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { motion, useReducedMotion } from "framer-motion";
 import { useEffect, useState } from "react";
 import type { DivIcon } from "leaflet";
 import {
@@ -35,6 +36,71 @@ function MapClickLayer({
   return null;
 }
 
+function CafeMarkerPopupContent({
+  record,
+  onEdit,
+  onDelete
+}: {
+  record: CafeRecord;
+  onEdit: (record: CafeRecord) => void;
+  onDelete: (record: CafeRecord) => void;
+}) {
+  const reduceMotion = useReducedMotion() ?? false;
+  return (
+    <motion.div
+      key={record.id}
+      initial={reduceMotion ? false : { opacity: 0, y: 8, filter: "blur(6px)" }}
+      animate={reduceMotion ? undefined : { opacity: 1, y: 0, filter: "blur(0px)" }}
+      transition={{ type: "spring", stiffness: 120, damping: 20 }}
+      className="w-[min(18rem,calc(100vw-4rem))] space-y-3 rounded-2xl bg-gradient-to-b from-[#fffbeb] to-[#fef3c7]/90 p-1 text-amber-950"
+    >
+      {record.photoUrl && (
+        <img
+          src={record.photoUrl}
+          alt={record.cafeName}
+          className="h-20 w-full rounded-xl object-cover ring-1 ring-amber-200/80"
+        />
+      )}
+      <div className="space-y-1 border-b border-amber-200/70 pb-2">
+        <p className="text-base font-bold leading-snug text-amber-950">{record.cafeName}</p>
+        <p className="text-xs font-medium text-amber-800/90">訪問日 {record.date}</p>
+        <p className="text-sm text-amber-900" aria-label={`評価 ${record.rating} / 5`}>
+          <span className="text-amber-600">{"★".repeat(record.rating)}</span>
+          <span className="text-amber-400/90">{"★".repeat(5 - record.rating)}</span>
+          <span className="ml-1.5 text-xs text-amber-800/80">{record.rating} / 5</span>
+        </p>
+      </div>
+      {record.bean.trim() !== "" && record.bean !== "未入力" && (
+        <p className="text-xs leading-relaxed text-amber-900/85">
+          <span className="font-semibold text-amber-800">ドリンク</span> {record.bean}
+        </p>
+      )}
+      {record.foodPairing && (
+        <p className="text-xs text-amber-800/90">お供 {record.foodPairing}</p>
+      )}
+      {record.note.trim() !== "" && (
+        <p className="line-clamp-3 text-xs leading-relaxed text-amber-900/80">{record.note}</p>
+      )}
+      <div className="flex flex-wrap gap-2 border-t border-amber-200/60 pt-2">
+        <button
+          type="button"
+          onClick={() => onEdit(record)}
+          className="rounded-lg bg-amber-700 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-amber-800"
+        >
+          編集
+        </button>
+        <button
+          type="button"
+          onClick={() => onDelete(record)}
+          className="rounded-lg border border-red-300/90 bg-white px-3 py-1.5 text-xs font-bold text-red-800 transition hover:bg-red-50"
+        >
+          削除
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
 type CafeMapCanvasProps = {
   records: CafeRecord[];
   mapCenter: [number, number];
@@ -42,8 +108,8 @@ type CafeMapCanvasProps = {
   userPosition: [number, number] | null;
   registrationCoords: [number, number] | null;
   onMapClick: (lat: number, lng: number) => void;
-  /** 既存ピンをタップしたとき（新規記録の店名・位置の初期値に使う） */
-  onRecordMarkerSelect?: (record: CafeRecord) => void;
+  onRecordEdit: (record: CafeRecord) => void;
+  onRecordDelete: (record: CafeRecord) => void;
 };
 
 export default function CafeMapCanvas({
@@ -53,7 +119,8 @@ export default function CafeMapCanvas({
   userPosition,
   registrationCoords,
   onMapClick,
-  onRecordMarkerSelect = () => {}
+  onRecordEdit,
+  onRecordDelete
 }: CafeMapCanvasProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [coffeeIcon, setCoffeeIcon] = useState<DivIcon | null>(null);
@@ -114,7 +181,7 @@ export default function CafeMapCanvas({
       Math.abs(userPosition[1] - registrationCoords[1]) > 0.000_02);
 
   return (
-    <div className="h-[62vh] min-h-[420px] bg-[#f5efe3]">
+    <div className="h-[min(78vh,calc(100dvh-11rem))] min-h-[460px] w-full bg-[#f5efe3]">
       <MapContainer center={mapCenter} zoom={mapZoom} scrollWheelZoom className="h-full w-full">
         <MapViewSync center={mapCenter} zoom={mapZoom} />
         <MapClickLayer onMapClick={onMapClick} />
@@ -125,31 +192,19 @@ export default function CafeMapCanvas({
 
         {coffeeIcon &&
           records.map((record) => (
-            <Marker
-              key={record.id}
-              position={[record.lat, record.lng]}
-              icon={coffeeIcon}
-              eventHandlers={{
-                click: () => {
-                  onRecordMarkerSelect(record);
-                }
-              }}
-            >
-              <Popup>
-                <div className="w-52 space-y-2">
-                  <img
-                    src={record.photoUrl}
-                    alt={record.cafeName}
-                    className="h-24 w-full rounded-md object-cover"
+            <Marker key={record.id} position={[record.lat, record.lng]} icon={coffeeIcon}>
+              <Popup
+                className="cafe-map-popup-shell"
+                closeButton
+                minWidth={272}
+                maxWidth={320}
+              >
+                <div className="leaflet-popup-inner">
+                  <CafeMarkerPopupContent
+                    record={record}
+                    onEdit={onRecordEdit}
+                    onDelete={onRecordDelete}
                   />
-                  <p className="font-semibold text-amber-900">{record.cafeName}</p>
-                  <p className="text-xs text-amber-800">{record.date}</p>
-                  <p className="text-sm">評価: {"★".repeat(record.rating)}</p>
-                  <p className="text-sm">ドリンク: {record.bean}</p>
-                  <p className="text-sm">
-                    お供: {record.foodPairing ? `🍰 ${record.foodPairing}` : "未入力"}
-                  </p>
-                  <p className="text-sm">{record.note}</p>
                 </div>
               </Popup>
             </Marker>
@@ -182,6 +237,47 @@ export default function CafeMapCanvas({
       <style jsx global>{`
         .leaflet-container {
           background: #f5efe3;
+        }
+
+        .cafe-map-popup-shell .leaflet-popup-content-wrapper {
+          border-radius: 18px;
+          padding: 0;
+          overflow: hidden;
+          background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+          border: 1px solid rgba(180, 83, 9, 0.22);
+          box-shadow:
+            0 18px 40px rgba(69, 26, 3, 0.18),
+            0 6px 14px rgba(120, 53, 15, 0.12);
+        }
+
+        .cafe-map-popup-shell .leaflet-popup-content {
+          margin: 10px 12px 12px;
+          min-width: 0;
+        }
+
+        .cafe-map-popup-shell .leaflet-popup-tip {
+          background: #fef3c7;
+          border: 1px solid rgba(180, 83, 9, 0.15);
+          box-shadow: none;
+        }
+
+        .cafe-map-popup-shell a.leaflet-popup-close-button {
+          width: 28px;
+          height: 28px;
+          padding: 0;
+          top: 8px;
+          right: 8px;
+          font-size: 18px;
+          line-height: 26px;
+          color: #78350f;
+          border-radius: 9999px;
+          background: rgba(255, 251, 235, 0.95);
+          border: 1px solid rgba(180, 83, 9, 0.2);
+        }
+
+        .cafe-map-popup-shell a.leaflet-popup-close-button:hover {
+          background: #fff7ed;
+          color: #451a03;
         }
 
         .leaflet-tile {

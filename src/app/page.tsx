@@ -93,7 +93,7 @@ export default function DashboardPage() {
         <div className="mt-3.5 flex flex-col gap-3 sm:mt-4">
           <Link href="/history" className={secondarySoftBtn}>
             <span className="flex flex-col items-center gap-0.5 sm:flex-row sm:gap-2">
-              <span className="text-[1.05rem] font-bold sm:text-base">Brew calendar</span>
+              <span className="text-[1.05rem] font-bold sm:text-base">Coffee Calendar</span>
               <span className="text-xs font-medium text-amber-800/75 sm:text-sm">抽出履歴を月で見る</span>
             </span>
           </Link>

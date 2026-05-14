@@ -7,11 +7,13 @@ import {
   DEFAULT_CAFE_PHOTO_URL,
   type CafeRecord
 } from "@/lib/cafeMapStorage";
-import { fetchCafeRecords, syncCafeRecordsForUser } from "@/lib/data/cafeRecordsDb";
+import { fetchCafeRecords, syncCafeRecordsForUser, CAFE_RECORDS_UPDATED_EVENT } from "@/lib/data/cafeRecordsDb";
 import { createClient } from "@/lib/supabase/client";
 const CafeMapCanvas = dynamic(() => import("@/components/CafeMapCanvas"), {
   ssr: false,
-  loading: () => <div className="h-[62vh] min-h-[420px] bg-amber-100/50" />
+  loading: () => (
+    <div className="h-[min(78vh,calc(100dvh-11rem))] min-h-[460px] bg-amber-100/50" />
+  )
 });
 const defaultCenter: [number, number] = [35.6804, 139.769];
 const pairingTags = ["ケーキ", "スコーン", "チョコ", "クッキー", "タルト"];
@@ -46,7 +48,7 @@ export default function CafeMapPage() {
   const [mapCenter, setMapCenter] = useState<[number, number]>(defaultCenter);
   const [isLocating, setIsLocating] = useState(false);
   const [locationMessage, setLocationMessage] = useState(
-    "地図のピンをタップするか、地図をタップして位置を決め、「＋ ここで記録する」でカフェ記録を追加できます。"
+    "地図をタップして位置を決めたり、ピンをタップして吹き出しから記録を確認・編集できます。「＋ ここで記録する」で新しいカフェ記録を追加できます。"
   );
   const [candidateName, setCandidateName] = useState("");
   const [candidatePlace, setCandidatePlace] = useState("");
@@ -129,6 +131,9 @@ export default function CafeMapPage() {
       return;
     }
     await syncCafeRecordsForUser(supabase, user.id, next);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event(CAFE_RECORDS_UPDATED_EVENT));
+    }
   }, []);
 
   useEffect(() => {
@@ -224,7 +229,7 @@ export default function CafeMapPage() {
       photoUrl: DEFAULT_CAFE_PHOTO_URL
     });
     setLocationMessage(
-      "店名・評価・ドリンク名・写真を入力し、「保存」でこのマップの記録一覧に追加されます。"
+      "店名・評価・ドリンク名・写真を入力し、「保存」でマップにピンが追加されます。"
     );
   }, [registrationCoords, candidateName, candidatePlace, pairing, records]);
 
@@ -239,41 +244,49 @@ export default function CafeMapPage() {
     return `記録する位置: ${registrationCoords[0].toFixed(5)}, ${registrationCoords[1].toFixed(5)}`;
   }, [registrationCoords]);
 
-  const handleRecordMarkerSelect = useCallback((record: CafeRecord) => {
-    setRegistrationCoords([record.lat, record.lng]);
-    setCandidateName(record.cafeName);
-    setCandidatePlace(`${record.cafeName}（マップの店舗ピンを選択中）`);
-    setLocationMessage(
-      `「${record.cafeName}」の位置・店名をセットしました。「＋ ここで記録する」で新しい記録を追加できます。`
-    );
+  const openCafeRecordEdit = useCallback((record: CafeRecord) => {
+    setEditingIsNew(false);
+    setEditingDraft({ ...record });
   }, []);
 
   const handleMapSelectSpot = useCallback(async (lat: number, lng: number) => {
     const pos: [number, number] = [lat, lng];
     setRegistrationCoords(pos);
     setLocationMessage(
-      "タップした位置で記録します。右の「店名」で直したあと「＋ ここで記録する」で入力画面を開けます。既存のピンをタップするとその店名が入ります。"
+      "タップした位置で記録します。下の「店名」で直したあと「＋ ここで記録する」で入力画面を開けます。既存のピンをタップすると吹き出しから編集・削除できます。"
     );
     const hint = await reverseGeocodeSuggestion(lat, lng);
     setCandidateName(hint.nameSuggestion ? `マイスポット（${hint.nameSuggestion}）` : "");
     setCandidatePlace(hint.placeLabel);
   }, []);
 
-  const handleDeleteRecord = (record: CafeRecord) => {
-    const ok = window.confirm(
-      `「${record.cafeName}」のスポット記録を削除しますか？\nこの操作は取り消せません。`
-    );
-    if (!ok) {
-      return;
-    }
-    const next = records.filter((item) => item.id !== record.id);
-    setRecords(next);
-    void persistRemote(next);
-    if (editingDraft?.id === record.id) {
-      setEditingDraft(null);
-      setEditingIsNew(false);
-    }
-  };
+  const handleDeleteRecord = useCallback(
+    (record: CafeRecord) => {
+      const ok = window.confirm(
+        `「${record.cafeName}」のスポット記録を削除しますか？\nこの操作は取り消せません。`
+      );
+      if (!ok) {
+        return;
+      }
+      setRecords((prev) => {
+        const next = prev.filter((item) => item.id !== record.id);
+        void persistRemote(next);
+        return next;
+      });
+      let closedEditing = false;
+      setEditingDraft((current) => {
+        if (current?.id === record.id) {
+          closedEditing = true;
+          return null;
+        }
+        return current;
+      });
+      if (closedEditing) {
+        setEditingIsNew(false);
+      }
+    },
+    [persistRemote]
+  );
 
   const saveEditedRecord = () => {
     if (!editingDraft) {
@@ -322,10 +335,10 @@ export default function CafeMapPage() {
           </button>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="flex flex-col gap-4">
           <div className="relative overflow-hidden rounded-2xl border border-amber-200">
             <p className="pointer-events-none absolute bottom-3 left-3 right-3 z-[400] rounded-xl border border-amber-200/80 bg-white/90 px-3 py-2 text-center text-xs text-amber-900/90 shadow sm:left-auto sm:right-3 sm:max-w-sm sm:text-left">
-              地図をタップするか店のピンをタップして位置と店名を決め、「＋ ここで記録する」で記録を追加します。保存するとこのマップの一覧に反映されます。
+              地図をタップして位置を決め、ピンをタップすると吹き出しで詳細・編集・削除ができます。「＋ ここで記録する」で新しい記録を追加します。
             </p>
             <CafeMapCanvas
               records={records}
@@ -333,11 +346,12 @@ export default function CafeMapPage() {
               userPosition={userPosition}
               registrationCoords={registrationCoords}
               onMapClick={handleMapSelectSpot}
-              onRecordMarkerSelect={handleRecordMarkerSelect}
+              onRecordEdit={openCafeRecordEdit}
+              onRecordDelete={handleDeleteRecord}
             />
           </div>
 
-          <aside className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+          <aside className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 sm:p-5">
             <h2 className="text-base font-semibold text-amber-900">記録前のメモ</h2>
             <p className="mt-2 text-sm text-amber-900/80">{locationMessage}</p>
             <p className="mt-1 text-xs text-amber-900/60">{registrationLabel}</p>
@@ -355,7 +369,7 @@ export default function CafeMapPage() {
                   autoComplete="off"
                 />
                 <p className="mt-2 text-xs leading-relaxed text-amber-900/65">
-                  位置は地図のタップ・店ピンのタップ、または「＋」での現在地取得で決まります。名前を整えてから「＋ ここで記録する」で入力画面を開いてください。
+                  位置は地図のタップ、「＋」での現在地取得で決まります。名前を整えてから「＋ ここで記録する」で入力画面を開いてください。
                 </p>
               </label>
               <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/80 p-3">
@@ -391,48 +405,6 @@ export default function CafeMapPage() {
                 />
               </div>
             </div>
-
-            <h3 className="mt-5 text-sm font-semibold text-amber-900">過去の記録</h3>
-            <ul className="mt-2 space-y-2">
-              {records.map((record) => (
-                <li
-                  key={record.id}
-                  className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm text-amber-900"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold">{record.cafeName}</span>
-                    <span className="text-xs text-amber-800">{record.date}</span>
-                    <span className="text-xs text-amber-700">
-                      {record.foodPairing ? `🍰 ${record.foodPairing}` : ""}
-                    </span>
-                  </div>
-                  {record.bean.trim() !== "" && record.bean !== "未入力" && (
-                    <p className="mt-1 text-xs text-amber-800/90">
-                      ドリンク / 豆の名前: {record.bean}
-                    </p>
-                  )}
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingIsNew(false);
-                        setEditingDraft({ ...record });
-                      }}
-                      className="rounded-md border border-amber-600 bg-amber-700 px-2 py-1 text-xs font-semibold text-white transition hover:bg-amber-800"
-                    >
-                      編集
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteRecord(record)}
-                      className="rounded-md border border-red-300 bg-white px-2 py-1 text-xs font-semibold text-red-800 transition hover:bg-red-50"
-                    >
-                      削除
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
           </aside>
         </div>
       </section>

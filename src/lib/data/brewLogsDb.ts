@@ -56,6 +56,12 @@ export function brewRowToStoredLog(row: BrewRow): StoredBrewLog {
       : {}),
     ...(row.coffee_maker_course != null && String(row.coffee_maker_course).trim() !== ""
       ? { coffeeMakerCourse: String(row.coffee_maker_course).trim() }
+      : {}),
+    ...(row.steep_time_memo != null && String(row.steep_time_memo).trim() !== ""
+      ? { steepTimeMemo: String(row.steep_time_memo).trim() }
+      : {}),
+    ...(row.grind_size != null && String(row.grind_size).trim() !== ""
+      ? { grindSize: String(row.grind_size).trim() }
       : {})
   };
 }
@@ -83,7 +89,9 @@ function storedLogToInsert(log: StoredBrewLog, userId: string): Database["public
     brew_photo_url: log.brewPhotoUrl ?? null,
     water_temp_c: log.waterTempC ?? null,
     bloom_time_sec: log.bloomTimeSec ?? null,
-    coffee_maker_course: log.coffeeMakerCourse ?? null
+    coffee_maker_course: log.coffeeMakerCourse ?? null,
+    steep_time_memo: log.steepTimeMemo ?? null,
+    grind_size: log.grindSize ?? null
   };
 }
 
@@ -142,6 +150,8 @@ export async function updateBrewLog(
       water_temp_c: log.waterTempC ?? null,
       bloom_time_sec: log.bloomTimeSec ?? null,
       coffee_maker_course: log.coffeeMakerCourse ?? null,
+      steep_time_memo: log.steepTimeMemo ?? null,
+      grind_size: log.grindSize ?? null,
       updated_at: new Date().toISOString()
     })
     .eq("id", log.id)

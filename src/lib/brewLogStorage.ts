@@ -35,6 +35,10 @@ export type StoredBrewLog = {
   bloomTimeSec?: number;
   /** コーヒーメーカーのコース/モード（マイルド等）。該当方法以外は未使用 */
   coffeeMakerCourse?: string | null;
+  /** カッピング等: 注湯からブレイクまでの時間など（自由記述） */
+  steepTimeMemo?: string | null;
+  /** 挽き目（プロモードの選択値） */
+  grindSize?: string | null;
 };
 
 export function normalizeMapCountryName(name: unknown) {
@@ -93,6 +97,15 @@ export function coerceStoredBrewLog(raw: unknown): StoredBrewLog | null {
       ? raw.coffeeMakerCourse.trim()
       : undefined;
 
+  const steepTimeMemo =
+    typeof raw.steepTimeMemo === "string" && raw.steepTimeMemo.trim() !== ""
+      ? raw.steepTimeMemo.trim()
+      : undefined;
+  const grindSize =
+    typeof raw.grindSize === "string" && raw.grindSize.trim() !== ""
+      ? raw.grindSize.trim()
+      : undefined;
+
   return {
     id: raw.id,
     date: typeof raw.date === "string" ? raw.date : String(raw.date ?? ""),
@@ -118,7 +131,9 @@ export function coerceStoredBrewLog(raw: unknown): StoredBrewLog | null {
     ...(Number.isFinite(bloomRaw) && !Number.isNaN(bloomRaw)
       ? { bloomTimeSec: Math.round(bloomRaw) }
       : {}),
-    ...(coffeeMakerCourse ? { coffeeMakerCourse } : {})
+    ...(coffeeMakerCourse ? { coffeeMakerCourse } : {}),
+    ...(steepTimeMemo ? { steepTimeMemo } : {}),
+    ...(grindSize ? { grindSize } : {})
   };
 }
 

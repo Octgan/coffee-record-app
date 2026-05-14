@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/client";
 import { compressImageFileForUpload } from "@/lib/compressImageForUpload";
 
 const COFFEE_BREW_METHOD_MAKER = "コーヒーメーカー";
+const BREW_METHOD_CUPPING = "カッピング";
 
 const brewMethods = [
   "ハンドドリップ",
@@ -25,6 +26,7 @@ const brewMethods = [
   "ネルドリップ",
   "コールドブリュー",
   "エアロプレス",
+  BREW_METHOD_CUPPING,
   COFFEE_BREW_METHOD_MAKER
 ];
 const coffeeMakerCoursePresets = ["マイルド", "ストロング", "アイス", "カフェオレ"] as const;
@@ -49,6 +51,17 @@ const brewMethodCards: { value: string; label: string; icon: React.ReactNode }[]
         <path d="M14 8h20l-2 10H16L14 8Z" strokeWidth="1.8" />
         <path d="M16 18h16l-3 12H19l-3-12Z" strokeWidth="1.8" />
         <path d="M22 30v10M26 30v10" strokeWidth="1.8" />
+      </svg>
+    )
+  },
+  {
+    value: BREW_METHOD_CUPPING,
+    label: "カッピング",
+    icon: (
+      <svg viewBox="0 0 48 48" className="h-10 w-10" fill="none" stroke="currentColor">
+        <path d="M14 28c0-4 2.5-7 5.5-7h9c3 0 5.5 3 5.5 7v4H14v-4Z" strokeWidth="1.8" />
+        <path d="M17 20v-6m7 6v-6m7 6v-6" strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M12 34h24" strokeWidth="1.8" />
       </svg>
     )
   },
@@ -129,7 +142,16 @@ const brewMethodCards: { value: string; label: string; icon: React.ReactNode }[]
     )
   }
 ];
-const grindSizes = ["極細挽き", "細挽き", "中細挽き", "中挽き", "粗挽き"];
+const grindSizesStandard = ["極細挽き", "細挽き", "中細挽き", "中挽き", "粗挽き"];
+const grindSizesCuppingFirst = [
+  "粗挽き（カッピング向け）",
+  "粗挽き",
+  "中粗挽き",
+  "中挽き",
+  "中細挽き",
+  "細挽き",
+  "極細挽き"
+];
 const roastLevels = ["浅煎り", "中煎り", "中深煎り", "深煎り"];
 const stars = [1, 2, 3, 4, 5];
 const pairingTags = ["ケーキ", "スコーン", "チョコ", "クッキー", "どら焼き"];
@@ -230,13 +252,26 @@ function BrewNewPageContent() {
   const [brewPhotoError, setBrewPhotoError] = useState<string | null>(null);
   const [waterTempC, setWaterTempC] = useState("");
   const [bloomTimeSec, setBloomTimeSec] = useState("");
+  const [steepTimeMemo, setSteepTimeMemo] = useState("");
+  const [grindSize, setGrindSize] = useState("");
   const [coffeeMakerCourse, setCoffeeMakerCourse] = useState("");
   const brewPhotoInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const prevEditingIdRef = useRef<number | null>(null);
+  const prevBrewMethodRef = useRef(brewMethods[0]);
   const selectedFamilies = flavorFamilies.filter((family) =>
     selectedFamilyIds.includes(family.id)
   );
+
+  const grindSelectOptions =
+    brewMethod === BREW_METHOD_CUPPING
+      ? grindSizesCuppingFirst
+      : [
+          ...grindSizesStandard,
+          ...(grindSize.trim() !== "" && !grindSizesStandard.includes(grindSize)
+            ? [grindSize]
+            : [])
+        ];
 
   const resetToNewBrewDefaults = useCallback(() => {
     setMode("beginner");
@@ -262,7 +297,10 @@ function BrewNewPageContent() {
     setBrewPhotoError(null);
     setWaterTempC("");
     setBloomTimeSec("");
+    setSteepTimeMemo("");
+    setGrindSize("");
     setCoffeeMakerCourse("");
+    prevBrewMethodRef.current = brewMethods[0];
   }, []);
 
   useEffect(() => {
@@ -318,7 +356,9 @@ function BrewNewPageContent() {
           Boolean(log.equipmentName) ||
           Boolean(log.filterRinse) ||
           Boolean(log.rdtDone) ||
-          flavors.length > 0;
+          flavors.length > 0 ||
+          Boolean(log.steepTimeMemo) ||
+          Boolean(log.grindSize);
         setMode(usePro ? "pro" : "beginner");
         const lat = log.cafeLat;
         const lng = log.cafeLng;
@@ -330,9 +370,12 @@ function BrewNewPageContent() {
         setBrewPhotoUrl(log.brewPhotoUrl ?? "");
         setWaterTempC(log.waterTempC != null ? String(log.waterTempC) : "");
         setBloomTimeSec(log.bloomTimeSec != null ? String(log.bloomTimeSec) : "");
+        setSteepTimeMemo(log.steepTimeMemo ?? "");
+        setGrindSize(log.grindSize ?? "");
         setCoffeeMakerCourse(log.coffeeMakerCourse ?? "");
         setBrewPhotoError(null);
         setFormDirty(false);
+        prevBrewMethodRef.current = log.method;
       } catch {
         if (!cancelled) {
           setSaveMessage("記録の読み込みに失敗しました。");
@@ -343,6 +386,20 @@ function BrewNewPageContent() {
       cancelled = true;
     };
   }, [editingId, resetToNewBrewDefaults]);
+
+  useEffect(() => {
+    const prev = prevBrewMethodRef.current;
+    if (prev !== brewMethod) {
+      if (brewMethod === BREW_METHOD_CUPPING) {
+        setBloomTimeSec("");
+        setEquipmentName((name) => name.trim() || "カッピングボウル");
+        setGrindSize((g) => (g.trim() === "" ? "粗挽き（カッピング向け）" : g));
+      } else {
+        setEquipmentName((name) => (name === "カッピングボウル" ? "" : name));
+      }
+      prevBrewMethodRef.current = brewMethod;
+    }
+  }, [brewMethod]);
 
   useEffect(() => {
     if (editingId != null) {
@@ -506,8 +563,12 @@ function BrewNewPageContent() {
       .filter((entry) => entry.country);
     const fallbackCountry = cleanedOrigins[0]?.country ?? COFFEE_ORIGINS[0].value;
     const isCoffeeMaker = brewMethod === COFFEE_BREW_METHOD_MAKER;
+    const isCupping = brewMethod === BREW_METHOD_CUPPING;
     const waterParsed = parseSmallIntInput(waterTempC);
     const bloomParsed = parseSmallIntInput(bloomTimeSec);
+    const grindTrim = grindSize.trim();
+    const steepTrim = steepTimeMemo.trim();
+
     const nextLog: StoredBrewLog = {
       id: editingId ?? Date.now(),
       date: brewDate,
@@ -515,7 +576,8 @@ function BrewNewPageContent() {
       origins: cleanedOrigins,
       originCountry: fallbackCountry,
       method: brewMethod,
-      equipmentName,
+      equipmentName:
+        isCupping ? equipmentName.trim() || "カッピングボウル" : equipmentName,
       roastLevel,
       roastery: roastery || "未入力",
       overallRating,
@@ -535,14 +597,31 @@ function BrewNewPageContent() {
         ? {
             waterTempC: 0,
             bloomTimeSec: 0,
-            coffeeMakerCourse: coffeeMakerCourse.trim() || null
+            coffeeMakerCourse: coffeeMakerCourse.trim() || null,
+            ...(grindTrim !== "" ? { grindSize: grindTrim } : {})
           }
-        : {
-            ...(waterParsed !== undefined ? { waterTempC: waterParsed } : {}),
-            ...(bloomParsed !== undefined ? { bloomTimeSec: bloomParsed } : {}),
-            coffeeMakerCourse: null
-          })
+        : isCupping
+          ? {
+              ...(waterParsed !== undefined ? { waterTempC: waterParsed } : {}),
+              bloomTimeSec: 0,
+              coffeeMakerCourse: null,
+              ...(steepTrim !== "" ? { steepTimeMemo: steepTrim } : {}),
+              ...(grindTrim !== "" ? { grindSize: grindTrim } : {})
+            }
+          : {
+              ...(waterParsed !== undefined ? { waterTempC: waterParsed } : {}),
+              ...(bloomParsed !== undefined ? { bloomTimeSec: bloomParsed } : {}),
+              coffeeMakerCourse: null,
+              ...(grindTrim !== "" ? { grindSize: grindTrim } : {})
+            })
     };
+
+    if (!isCoffeeMaker && !isCupping) {
+      nextLog.steepTimeMemo = undefined;
+    }
+    if (isCoffeeMaker) {
+      nextLog.steepTimeMemo = undefined;
+    }
 
     setIsSaving(true);
     setSaveMessage("");
@@ -693,6 +772,15 @@ function BrewNewPageContent() {
                     ))}
                   </datalist>
                 </label>
+              </div>
+            )}
+
+            {brewMethod === BREW_METHOD_CUPPING && (
+              <div className="rounded-xl border border-amber-400/80 bg-amber-100/60 p-4">
+                <p className="text-sm font-semibold text-amber-950">カッピング用の記録</p>
+                <p className="mt-2 text-xs leading-relaxed text-amber-900/90">
+                  蒸らし（ブルーム）の秒数は使いません。プロモードの「基本条件」で浸漬時間をメモし、「抽出方法別の詳細」で挽き目を選べます。器具名は未入力なら「カッピングボウル」として保存されます。
+                </p>
               </div>
             )}
 
@@ -898,7 +986,7 @@ function BrewNewPageContent() {
               <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
                 <h2 className="text-base font-semibold text-amber-900">基本条件</h2>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  {brewMethod !== COFFEE_BREW_METHOD_MAKER && (
+                  {brewMethod !== COFFEE_BREW_METHOD_MAKER && brewMethod !== BREW_METHOD_CUPPING && (
                     <>
                       <label className="flex flex-col gap-2 text-sm font-medium text-amber-900">
                         水の温度 (°C)
@@ -918,6 +1006,38 @@ function BrewNewPageContent() {
                           onChange={(event) => setBloomTimeSec(event.target.value)}
                           className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                           placeholder="40"
+                        />
+                      </label>
+                    </>
+                  )}
+                  {brewMethod === BREW_METHOD_CUPPING && (
+                    <>
+                      <label className="flex flex-col gap-2 text-sm font-medium text-amber-900">
+                        湯温 (°C)
+                        <input
+                          type="number"
+                          value={waterTempC}
+                          onChange={(event) => setWaterTempC(event.target.value)}
+                          className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                          placeholder="93"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-2 text-sm font-semibold text-amber-950 sm:col-span-2 lg:col-span-3">
+                        <span className="flex items-center gap-2">
+                          浸漬時間のメモ
+                          <span className="rounded-full bg-amber-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                            カッピング
+                          </span>
+                        </span>
+                        <span className="text-xs font-normal font-medium text-amber-800/90">
+                          お湯を注いでからクラストをブレイクするまでの時間など、分:秒や「約4分」など自由に書けます。
+                        </span>
+                        <textarea
+                          value={steepTimeMemo}
+                          onChange={(event) => setSteepTimeMemo(event.target.value)}
+                          rows={3}
+                          className="min-h-[5.5rem] rounded-xl border-2 border-amber-400 bg-white px-3 py-2 text-amber-950 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          placeholder="例: 注湯完了 0:00 → 4:00 にブレイク / 香りのメモ"
                         />
                       </label>
                     </>
@@ -949,16 +1069,25 @@ function BrewNewPageContent() {
                   プロ向けに器具情報やこだわり工程を記録できます。
                 </p>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <label className="flex flex-col gap-2 text-sm font-medium text-amber-900 sm:col-span-2">
-                    使用器具（名前 / メーカー）
-                    <input
-                      type="text"
-                      value={equipmentName}
-                      onChange={(event) => setEquipmentName(event.target.value)}
-                      className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                      placeholder="例: Hario V60 / Fellow Stagg EKG"
-                    />
-                  </label>
+                  {brewMethod !== BREW_METHOD_CUPPING ? (
+                    <label className="flex flex-col gap-2 text-sm font-medium text-amber-900 sm:col-span-2">
+                      使用器具（名前 / メーカー）
+                      <input
+                        type="text"
+                        value={equipmentName}
+                        onChange={(event) => setEquipmentName(event.target.value)}
+                        className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        placeholder="例: Hario V60 / Fellow Stagg EKG"
+                      />
+                    </label>
+                  ) : (
+                    <div className="sm:col-span-2 rounded-xl border border-dashed border-amber-400/80 bg-amber-50/80 px-3 py-3 text-sm text-amber-900">
+                      <p className="font-semibold text-amber-950">抽出器具</p>
+                      <p className="mt-1 text-xs leading-relaxed text-amber-900/85">
+                        カッピングでは入力不要です。保存時に器具名が空のときは「カッピングボウル」として記録されます。別の器を使った場合は、下のメモ欄などに追記してください。
+                      </p>
+                    </div>
+                  )}
                   <label className="flex min-h-[2.75rem] items-center gap-3 rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-sm font-medium text-amber-900">
                     <input
                       type="checkbox"
@@ -980,19 +1109,57 @@ function BrewNewPageContent() {
                 </div>
               </details>
 
-              <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
+              <div
+                className={`rounded-2xl border bg-amber-50/50 p-5 ${
+                  brewMethod === BREW_METHOD_CUPPING
+                    ? "border-2 border-amber-500 shadow-md shadow-amber-900/10"
+                    : "border border-amber-200"
+                }`}
+              >
                 <h2 className="text-base font-semibold text-amber-900">
                   抽出方法別の詳細
+                  {brewMethod === BREW_METHOD_CUPPING && (
+                    <span className="ml-2 text-xs font-normal text-amber-800">
+                      （挽き目を中心に記録）
+                    </span>
+                  )}
                 </h2>
                 <p className="mt-2 text-sm text-amber-900/80">
                   現在の選択: {brewMethod}
                 </p>
 
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <label className="flex flex-col gap-2 text-sm font-medium text-amber-900 sm:col-span-2">
-                    挽き目
-                    <select className="w-full rounded-xl border border-amber-200 bg-white px-4 py-3 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400">
-                      {grindSizes.map((size) => (
+                  <label
+                    className={`flex flex-col gap-2 text-sm font-medium sm:col-span-2 ${
+                      brewMethod === BREW_METHOD_CUPPING
+                        ? "text-amber-950"
+                        : "text-amber-900"
+                    }`}
+                  >
+                    <span className="flex flex-wrap items-center gap-2">
+                      粉の挽き具合（挽き目）
+                      {brewMethod === BREW_METHOD_CUPPING && (
+                        <span className="rounded-full bg-amber-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                          カッピング
+                        </span>
+                      )}
+                    </span>
+                    {brewMethod === BREW_METHOD_CUPPING && (
+                      <span className="text-xs font-normal text-amber-800/90">
+                        カッピングではやや粗めが一般的です。リスト先頭に候補をまとめています。
+                      </span>
+                    )}
+                    <select
+                      value={grindSize}
+                      onChange={(event) => setGrindSize(event.target.value)}
+                      className={`w-full rounded-xl border bg-white px-4 py-3 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400 ${
+                        brewMethod === BREW_METHOD_CUPPING
+                          ? "border-2 border-amber-500 font-medium"
+                          : "border border-amber-200"
+                      }`}
+                    >
+                      <option value="">選択してください</option>
+                      {grindSelectOptions.map((size) => (
                         <option key={size} value={size}>
                           {size}
                         </option>
