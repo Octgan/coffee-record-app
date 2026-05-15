@@ -5,18 +5,18 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { upsertCafeRecordForBrewLogRemote } from "@/lib/data/cafeRecordsDb";
 import { addOriginExtras } from "@/lib/data/originExtrasDb";
+import { insertBrewLog, updateBrewLog, fetchBrewLogs } from "@/lib/data/brewLogsDb";
 import {
-  insertBrewLog,
-  updateBrewLog,
-  fetchBrewLogs
-} from "@/lib/data/brewLogsDb";
-import { BREW_LOGS_UPDATED_EVENT, type StoredBrewLog } from "@/lib/brewLogStorage";
+  BREW_LOGS_UPDATED_EVENT,
+  BREW_METHOD_CUPPING,
+  COFFEE_BREW_METHOD_MAKER,
+  formatBrewSaveError,
+  normalizeBrewLogForDatabase,
+  type StoredBrewLog
+} from "@/lib/brewLogStorage";
 import { COFFEE_ORIGINS } from "@/lib/coffeeOrigins";
 import { createClient } from "@/lib/supabase/client";
 import { compressImageFileForUpload } from "@/lib/compressImageForUpload";
-
-const COFFEE_BREW_METHOD_MAKER = "コーヒーメーカー";
-const BREW_METHOD_CUPPING = "カッピング";
 
 const brewMethods = [
   "ハンドドリップ",
@@ -562,26 +562,25 @@ function BrewNewPageContent() {
       }))
       .filter((entry) => entry.country);
     const fallbackCountry = cleanedOrigins[0]?.country ?? COFFEE_ORIGINS[0].value;
-    const isCoffeeMaker = brewMethod === COFFEE_BREW_METHOD_MAKER;
-    const isCupping = brewMethod === BREW_METHOD_CUPPING;
     const waterParsed = parseSmallIntInput(waterTempC);
     const bloomParsed = parseSmallIntInput(bloomTimeSec);
     const grindTrim = grindSize.trim();
     const steepTrim = steepTimeMemo.trim();
+    const isCoffeeMaker = brewMethod === COFFEE_BREW_METHOD_MAKER;
+    const isCupping = brewMethod === BREW_METHOD_CUPPING;
 
-    const nextLog: StoredBrewLog = {
+    const draftLog: StoredBrewLog = {
       id: editingId ?? Date.now(),
       date: brewDate,
       beanName: beanName || "未入力",
-      origins: cleanedOrigins,
+      origins: cleanedOrigins.length > 0 ? cleanedOrigins : undefined,
       originCountry: fallbackCountry,
       method: brewMethod,
-      equipmentName:
-        isCupping ? equipmentName.trim() || "カッピングボウル" : equipmentName,
+      equipmentName: equipmentName.trim() || undefined,
       roastLevel,
       roastery: roastery || "未入力",
       overallRating,
-      foodPairing,
+      foodPairing: foodPairing.trim() || undefined,
       filterRinse,
       rdtDone,
       flavors: selectedFlavors,
@@ -604,24 +603,17 @@ function BrewNewPageContent() {
           ? {
               ...(waterParsed !== undefined ? { waterTempC: waterParsed } : {}),
               bloomTimeSec: 0,
-              coffeeMakerCourse: null,
               ...(steepTrim !== "" ? { steepTimeMemo: steepTrim } : {}),
               ...(grindTrim !== "" ? { grindSize: grindTrim } : {})
             }
           : {
               ...(waterParsed !== undefined ? { waterTempC: waterParsed } : {}),
               ...(bloomParsed !== undefined ? { bloomTimeSec: bloomParsed } : {}),
-              coffeeMakerCourse: null,
               ...(grindTrim !== "" ? { grindSize: grindTrim } : {})
             })
     };
 
-    if (!isCoffeeMaker && !isCupping) {
-      nextLog.steepTimeMemo = undefined;
-    }
-    if (isCoffeeMaker) {
-      nextLog.steepTimeMemo = undefined;
-    }
+    const nextLog = normalizeBrewLogForDatabase(draftLog);
 
     setIsSaving(true);
     setSaveMessage("");
@@ -646,11 +638,19 @@ function BrewNewPageContent() {
           return;
         }
         const saved = await updateBrewLog(supabase, user.id, { ...nextLog, id: editingId });
-        await upsertCafeRecordForBrewLogRemote(supabase, user.id, saved);
+        try {
+          await upsertCafeRecordForBrewLogRemote(supabase, user.id, saved);
+        } catch (cafeErr) {
+          console.error("Cafe map sync failed after brew update:", cafeErr);
+        }
         setSaveMessage("記録を更新しました。");
       } else {
         const saved = await insertBrewLog(supabase, user.id, nextLog);
-        await upsertCafeRecordForBrewLogRemote(supabase, user.id, saved);
+        try {
+          await upsertCafeRecordForBrewLogRemote(supabase, user.id, saved);
+        } catch (cafeErr) {
+          console.error("Cafe map sync failed after brew insert:", cafeErr);
+        }
         setSaveMessage(
           `記録を保存しました。${cleanedOrigins
             .map(
@@ -662,15 +662,20 @@ function BrewNewPageContent() {
         );
       }
 
-      await addOriginExtras(
-        supabase,
-        user.id,
-        cleanedOrigins.map((item) => item.country)
-      );
+      try {
+        await addOriginExtras(
+          supabase,
+          user.id,
+          cleanedOrigins.map((item) => item.country)
+        );
+      } catch (originErr) {
+        console.error("Origin extras sync failed:", originErr);
+      }
       window.dispatchEvent(new Event(BREW_LOGS_UPDATED_EVENT));
       setFormDirty(false);
-    } catch {
-      setSaveMessage("保存中にエラーが発生しました。");
+    } catch (err) {
+      console.error("Brew log save failed:", err);
+      setSaveMessage(`保存中にエラーが発生しました: ${formatBrewSaveError(err)}`);
     } finally {
       setIsSaving(false);
     }

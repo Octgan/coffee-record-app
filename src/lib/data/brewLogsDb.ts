@@ -1,10 +1,43 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BrewLogRow, Database, Json } from "@/lib/database.types";
-import type { StoredBrewLog } from "@/lib/brewLogStorage";
+import { normalizeBrewLogForDatabase, type StoredBrewLog } from "@/lib/brewLogStorage";
 
 export type TypedSupabaseClient = SupabaseClient<Database>;
 
 type BrewRow = BrewLogRow;
+type BrewInsert = Database["public"]["Tables"]["brew_logs"]["Insert"];
+type BrewUpdate = Database["public"]["Tables"]["brew_logs"]["Update"];
+
+const OPTIONAL_MIGRATION_COLUMNS = [
+  "water_temp_c",
+  "bloom_time_sec",
+  "coffee_maker_course",
+  "steep_time_memo",
+  "grind_size"
+] as const;
+
+function isSchemaColumnError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+  const record = error as { code?: string; message?: string };
+  if (record.code === "PGRST204") {
+    return true;
+  }
+  const message = String(record.message ?? "").toLowerCase();
+  return (
+    message.includes("column") &&
+    (message.includes("schema cache") || message.includes("could not find"))
+  );
+}
+
+function withoutOptionalMigrationColumns<T extends Record<string, unknown>>(row: T): T {
+  const copy = { ...row };
+  for (const key of OPTIONAL_MIGRATION_COLUMNS) {
+    delete copy[key];
+  }
+  return copy;
+}
 
 export function brewRowToStoredLog(row: BrewRow): StoredBrewLog {
   const flavorsRaw = row.flavors;
@@ -66,33 +99,97 @@ export function brewRowToStoredLog(row: BrewRow): StoredBrewLog {
   };
 }
 
-function storedLogToInsert(log: StoredBrewLog, userId: string): Database["public"]["Tables"]["brew_logs"]["Insert"] {
+function storedLogToInsert(log: StoredBrewLog, userId: string): BrewInsert {
+  const normalized = normalizeBrewLogForDatabase(log);
+
   return {
     user_id: userId,
-    date: log.date,
-    bean_name: log.beanName,
-    origins: (log.origins ?? null) as Json,
-    origin_country: log.originCountry,
-    method: log.method,
-    equipment_name: log.equipmentName ?? null,
-    roast_level: log.roastLevel,
-    roastery: log.roastery,
-    overall_rating: log.overallRating,
-    food_pairing: log.foodPairing ?? null,
-    filter_rinse: log.filterRinse,
-    rdt_done: log.rdtDone,
-    flavors: log.flavors as Json,
-    aftertaste: log.aftertaste,
-    memo: log.memo,
-    cafe_lat: log.cafeLat ?? null,
-    cafe_lng: log.cafeLng ?? null,
-    brew_photo_url: log.brewPhotoUrl ?? null,
-    water_temp_c: log.waterTempC ?? null,
-    bloom_time_sec: log.bloomTimeSec ?? null,
-    coffee_maker_course: log.coffeeMakerCourse ?? null,
-    steep_time_memo: log.steepTimeMemo ?? null,
-    grind_size: log.grindSize ?? null
+    date: normalized.date,
+    bean_name: normalized.beanName,
+    origins:
+      normalized.origins && normalized.origins.length > 0
+        ? (normalized.origins as Json)
+        : null,
+    origin_country: normalized.originCountry,
+    method: normalized.method,
+    equipment_name: normalized.equipmentName?.trim() || null,
+    roast_level: normalized.roastLevel,
+    roastery: normalized.roastery,
+    overall_rating: normalized.overallRating,
+    food_pairing: normalized.foodPairing?.trim() || null,
+    filter_rinse: normalized.filterRinse ?? false,
+    rdt_done: normalized.rdtDone ?? false,
+    flavors: (normalized.flavors ?? []) as Json,
+    aftertaste: normalized.aftertaste ?? "",
+    memo: normalized.memo ?? "",
+    cafe_lat: normalized.cafeLat ?? null,
+    cafe_lng: normalized.cafeLng ?? null,
+    brew_photo_url: normalized.brewPhotoUrl?.trim() || null,
+    water_temp_c:
+      typeof normalized.waterTempC === "number" && Number.isFinite(normalized.waterTempC)
+        ? normalized.waterTempC
+        : null,
+    bloom_time_sec:
+      typeof normalized.bloomTimeSec === "number" && Number.isFinite(normalized.bloomTimeSec)
+        ? normalized.bloomTimeSec
+        : null,
+    coffee_maker_course: normalized.coffeeMakerCourse ?? null,
+    steep_time_memo: normalized.steepTimeMemo ?? null,
+    grind_size: normalized.grindSize ?? null
   };
+}
+
+async function runBrewInsert(
+  client: TypedSupabaseClient,
+  insert: BrewInsert
+): Promise<BrewRow> {
+  const { data, error } = await client.from("brew_logs").insert(insert).select("*").single();
+  if (!error) {
+    return data as BrewRow;
+  }
+  if (!isSchemaColumnError(error)) {
+    throw error;
+  }
+  const legacy = withoutOptionalMigrationColumns(insert);
+  const { data: legacyData, error: legacyError } = await client
+    .from("brew_logs")
+    .insert(legacy)
+    .select("*")
+    .single();
+  if (legacyError) {
+    throw legacyError;
+  }
+  return legacyData as BrewRow;
+}
+
+async function runBrewUpdate(
+  client: TypedSupabaseClient,
+  logId: number,
+  patch: BrewUpdate
+): Promise<BrewRow> {
+  const { data, error } = await client
+    .from("brew_logs")
+    .update(patch)
+    .eq("id", logId)
+    .select("*")
+    .single();
+  if (!error) {
+    return data as BrewRow;
+  }
+  if (!isSchemaColumnError(error)) {
+    throw error;
+  }
+  const legacyPatch = withoutOptionalMigrationColumns(patch as Record<string, unknown>) as BrewUpdate;
+  const { data: legacyData, error: legacyError } = await client
+    .from("brew_logs")
+    .update(legacyPatch)
+    .eq("id", logId)
+    .select("*")
+    .single();
+  if (legacyError) {
+    throw legacyError;
+  }
+  return legacyData as BrewRow;
 }
 
 export async function fetchBrewLogs(client: TypedSupabaseClient): Promise<StoredBrewLog[]> {
@@ -113,12 +210,8 @@ export async function insertBrewLog(
   log: StoredBrewLog
 ): Promise<StoredBrewLog> {
   const insert = storedLogToInsert(log, userId);
-
-  const { data, error } = await client.from("brew_logs").insert(insert).select("*").single();
-  if (error) {
-    throw error;
-  }
-  return brewRowToStoredLog(data as BrewRow);
+  const row = await runBrewInsert(client, insert);
+  return brewRowToStoredLog(row);
 }
 
 export async function updateBrewLog(
@@ -126,41 +219,45 @@ export async function updateBrewLog(
   _userId: string,
   log: StoredBrewLog
 ): Promise<StoredBrewLog> {
-  const { data, error } = await client
-    .from("brew_logs")
-    .update({
-      date: log.date,
-      bean_name: log.beanName,
-      origins: (log.origins ?? null) as Json,
-      origin_country: log.originCountry,
-      method: log.method,
-      equipment_name: log.equipmentName ?? null,
-      roast_level: log.roastLevel,
-      roastery: log.roastery,
-      overall_rating: log.overallRating,
-      food_pairing: log.foodPairing ?? null,
-      filter_rinse: log.filterRinse,
-      rdt_done: log.rdtDone,
-      flavors: log.flavors as Json,
-      aftertaste: log.aftertaste,
-      memo: log.memo,
-      cafe_lat: log.cafeLat ?? null,
-      cafe_lng: log.cafeLng ?? null,
-      brew_photo_url: log.brewPhotoUrl ?? null,
-      water_temp_c: log.waterTempC ?? null,
-      bloom_time_sec: log.bloomTimeSec ?? null,
-      coffee_maker_course: log.coffeeMakerCourse ?? null,
-      steep_time_memo: log.steepTimeMemo ?? null,
-      grind_size: log.grindSize ?? null,
-      updated_at: new Date().toISOString()
-    })
-    .eq("id", log.id)
-    .select("*")
-    .single();
-  if (error) {
-    throw error;
-  }
-  return brewRowToStoredLog(data as BrewRow);
+  const normalized = normalizeBrewLogForDatabase(log);
+  const patch: BrewUpdate = {
+    date: normalized.date,
+    bean_name: normalized.beanName,
+    origins:
+      normalized.origins && normalized.origins.length > 0
+        ? (normalized.origins as Json)
+        : null,
+    origin_country: normalized.originCountry,
+    method: normalized.method,
+    equipment_name: normalized.equipmentName?.trim() || null,
+    roast_level: normalized.roastLevel,
+    roastery: normalized.roastery,
+    overall_rating: normalized.overallRating,
+    food_pairing: normalized.foodPairing?.trim() || null,
+    filter_rinse: normalized.filterRinse ?? false,
+    rdt_done: normalized.rdtDone ?? false,
+    flavors: (normalized.flavors ?? []) as Json,
+    aftertaste: normalized.aftertaste ?? "",
+    memo: normalized.memo ?? "",
+    cafe_lat: normalized.cafeLat ?? null,
+    cafe_lng: normalized.cafeLng ?? null,
+    brew_photo_url: normalized.brewPhotoUrl?.trim() || null,
+    water_temp_c:
+      typeof normalized.waterTempC === "number" && Number.isFinite(normalized.waterTempC)
+        ? normalized.waterTempC
+        : null,
+    bloom_time_sec:
+      typeof normalized.bloomTimeSec === "number" && Number.isFinite(normalized.bloomTimeSec)
+        ? normalized.bloomTimeSec
+        : null,
+    coffee_maker_course: normalized.coffeeMakerCourse ?? null,
+    steep_time_memo: normalized.steepTimeMemo ?? null,
+    grind_size: normalized.grindSize ?? null,
+    updated_at: new Date().toISOString()
+  };
+
+  const row = await runBrewUpdate(client, log.id, patch);
+  return brewRowToStoredLog(row);
 }
 
 export async function deleteBrewLog(client: TypedSupabaseClient, brewLogId: number): Promise<void> {

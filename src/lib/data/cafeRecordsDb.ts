@@ -1,7 +1,7 @@
 import type { TypedSupabaseClient } from "@/lib/data/brewLogsDb";
 import type { CafeRecordRow, Database } from "@/lib/database.types";
 import { DEFAULT_CAFE_PHOTO_URL, type CafeRecord } from "@/lib/cafeMapStorage";
-import type { StoredBrewLog } from "@/lib/brewLogStorage";
+import { normalizeBrewDate, type StoredBrewLog } from "@/lib/brewLogStorage";
 
 /** カフェ記録の更新後にカレンダー等が再取得するための同一タブ用イベント */
 export const CAFE_RECORDS_UPDATED_EVENT = "coffee-cafe-records-updated";
@@ -32,7 +32,7 @@ function recordToInsert(r: CafeRecord, userId: string): Database["public"]["Tabl
     cafe_name: r.cafeName,
     lat: r.lat,
     lng: r.lng,
-    date: r.date,
+    date: normalizeBrewDate(r.date),
     rating: r.rating,
     bean: r.bean,
     note: r.note,
@@ -99,7 +99,7 @@ export async function upsertCafeRecordForBrewLogRemote(
     cafeName,
     lat,
     lng,
-    date: log.date,
+    date: normalizeBrewDate(log.date),
     rating: Math.min(5, Math.max(1, Math.round(log.overallRating))),
     bean: beanLabel,
     note: noteParts.join("\n"),

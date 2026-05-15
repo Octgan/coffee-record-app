@@ -41,6 +41,139 @@ export type StoredBrewLog = {
   grindSize?: string | null;
 };
 
+export const COFFEE_BREW_METHOD_MAKER = "コーヒーメーカー";
+export const BREW_METHOD_CUPPING = "カッピング";
+
+/** DB・カレンダー用に YYYY-MM-DD に揃える */
+export function normalizeBrewDate(date: unknown): string {
+  const raw = String(date ?? "").trim();
+  const isoPrefix = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoPrefix) {
+    return `${isoPrefix[1]}-${isoPrefix[2]}-${isoPrefix[3]}`;
+  }
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, "0");
+    const d = String(parsed.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return new Date().toISOString().slice(0, 10);
+}
+
+function finiteSmallInt(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  return Math.round(Math.min(32767, Math.max(-32768, value)));
+}
+
+/**
+ * Supabase 保存前に必須項目・抽出方法別のデフォルトを揃える。
+ * カッピングで非表示の蒸らし時間なども DB 制約を満たす値にする。
+ */
+export function normalizeBrewLogForDatabase(log: StoredBrewLog): StoredBrewLog {
+  const method = String(log.method ?? "ハンドドリップ").trim() || "ハンドドリップ";
+  const isCoffeeMaker = method === COFFEE_BREW_METHOD_MAKER;
+  const isCupping = method === BREW_METHOD_CUPPING;
+
+  const origins =
+    log.origins && log.origins.length > 0
+      ? log.origins
+          .map((entry) => ({
+            country: String(entry.country ?? "").trim(),
+            ratio: String(entry.ratio ?? "").trim()
+          }))
+          .filter((entry) => entry.country !== "")
+      : undefined;
+
+  const fallbackCountry =
+    origins?.[0]?.country ||
+    (typeof log.originCountry === "string" && log.originCountry.trim() !== ""
+      ? log.originCountry.trim()
+      : "Unknown");
+
+  let waterTempC = finiteSmallInt(log.waterTempC);
+  let bloomTimeSec = finiteSmallInt(log.bloomTimeSec);
+  let coffeeMakerCourse =
+    log.coffeeMakerCourse != null && String(log.coffeeMakerCourse).trim() !== ""
+      ? String(log.coffeeMakerCourse).trim()
+      : null;
+  let steepTimeMemo =
+    log.steepTimeMemo != null && String(log.steepTimeMemo).trim() !== ""
+      ? String(log.steepTimeMemo).trim()
+      : null;
+  let grindSize =
+    log.grindSize != null && String(log.grindSize).trim() !== ""
+      ? String(log.grindSize).trim()
+      : null;
+
+  let equipmentName = log.equipmentName?.trim() || undefined;
+
+  if (isCoffeeMaker) {
+    waterTempC = 0;
+    bloomTimeSec = 0;
+    steepTimeMemo = null;
+  } else if (isCupping) {
+    bloomTimeSec = 0;
+    coffeeMakerCourse = null;
+    equipmentName = equipmentName || "カッピングボウル";
+  } else {
+    coffeeMakerCourse = null;
+    steepTimeMemo = null;
+  }
+
+  const cafeLat = Number(log.cafeLat);
+  const cafeLng = Number(log.cafeLng);
+
+  return {
+    ...log,
+    date: normalizeBrewDate(log.date),
+    beanName: log.beanName?.trim() || "未入力",
+    origins: origins && origins.length > 0 ? origins : undefined,
+    originCountry: fallbackCountry,
+    method,
+    equipmentName,
+    roastLevel: log.roastLevel?.trim() || "中煎り",
+    roastery: log.roastery?.trim() || "未入力",
+    overallRating: Math.min(5, Math.max(1, Math.round(Number(log.overallRating) || 4))),
+    foodPairing: log.foodPairing?.trim() || undefined,
+    filterRinse: Boolean(log.filterRinse),
+    rdtDone: Boolean(log.rdtDone),
+    flavors: Array.isArray(log.flavors) ? log.flavors : [],
+    aftertaste: log.aftertaste?.trim() ?? "",
+    memo: log.memo?.trim() ?? "",
+    ...(Number.isFinite(cafeLat) && Number.isFinite(cafeLng) ? { cafeLat, cafeLng } : {}),
+    ...(log.brewPhotoUrl?.trim() ? { brewPhotoUrl: log.brewPhotoUrl.trim() } : {}),
+    ...(waterTempC !== null ? { waterTempC } : {}),
+    ...(bloomTimeSec !== null ? { bloomTimeSec } : {}),
+    ...(coffeeMakerCourse !== null ? { coffeeMakerCourse } : {}),
+    ...(steepTimeMemo !== null ? { steepTimeMemo } : {}),
+    ...(grindSize !== null ? { grindSize } : {})
+  };
+}
+
+export function formatBrewSaveError(error: unknown): string {
+  if (error && typeof error === "object") {
+    const record = error as {
+      message?: string;
+      details?: string;
+      hint?: string;
+      code?: string;
+    };
+    const parts = [record.message, record.details, record.hint].filter(
+      (part): part is string => typeof part === "string" && part.trim() !== ""
+    );
+    if (parts.length > 0) {
+      return parts.join(" — ");
+    }
+  }
+  if (error instanceof Error && error.message.trim() !== "") {
+    return error.message;
+  }
+  return "不明なエラーが発生しました。";
+}
+
 export function normalizeMapCountryName(name: unknown) {
   return String(name ?? "").trim().toLowerCase();
 }
