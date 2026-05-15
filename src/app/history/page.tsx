@@ -23,84 +23,6 @@ const monthOptions = [
   { value: 10, label: "11月" },
   { value: 11, label: "12月" }
 ];
-const stampKinds = ["bean", "mug", "dripper", "pot"] as const;
-
-function StampIllustration({
-  kind,
-  seed,
-  emphasis = false,
-  cafeTone = false
-}: {
-  kind: (typeof stampKinds)[number];
-  seed: string;
-  emphasis?: boolean;
-  cafeTone?: boolean;
-}) {
-  const filterId = `rough-${seed}`;
-
-  return (
-    <svg
-      viewBox="0 0 120 120"
-      className={`h-full w-full ${
-        cafeTone
-          ? "text-rose-700/55"
-          : emphasis
-            ? "text-amber-800/70"
-            : "text-amber-800/35"
-      }`}
-    >
-      <defs>
-        <filter id={filterId}>
-          <feTurbulence
-            type="fractalNoise"
-            baseFrequency="0.9"
-            numOctaves="2"
-            seed={Math.abs(seed.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0))}
-            result="noise"
-          />
-          <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.7" />
-        </filter>
-      </defs>
-      <g
-        filter={`url(#${filterId})`}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        {kind === "bean" && (
-          <>
-            <ellipse cx="60" cy="62" rx="26" ry="34" />
-            <path d="M54 35c9 10 9 40 0 54" />
-          </>
-        )}
-        {kind === "mug" && (
-          <>
-            <rect x="26" y="42" width="50" height="38" rx="9" />
-            <path d="M76 52h16a9 9 0 0 1 0 18H76" />
-            <path d="M36 86h46" />
-          </>
-        )}
-        {kind === "dripper" && (
-          <>
-            <path d="M24 34h72l-13 34H37L24 34Z" />
-            <path d="M60 68v26" />
-            <path d="M44 94h32" />
-          </>
-        )}
-        {kind === "pot" && (
-          <>
-            <path d="M34 34h40v26a20 20 0 0 1-40 0V34Z" />
-            <path d="M74 42h14a8 8 0 0 1 0 16H74" />
-            <path d="M34 86h46" />
-          </>
-        )}
-      </g>
-    </svg>
-  );
-}
-
 function formatDateKey(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -108,14 +30,6 @@ function formatDateKey(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function seededRandom(seed: string) {
-  let hash = 2166136261;
-  for (let i = 0; i < seed.length; i += 1) {
-    hash ^= seed.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0) / 4294967295;
-}
 function pairingIcon(pairing: string) {
   if (pairing.includes("ケーキ")) return "🍰";
   if (pairing.includes("スコーン")) return "🥐";
@@ -154,6 +68,87 @@ function dayHasActivity(activity: DayActivity | undefined) {
     return false;
   }
   return activity.brews.length > 0 || activity.cafes.length > 0;
+}
+
+function calendarCellClass(hasAct: boolean, brewCount: number, cafeCount: number) {
+  const base =
+    "relative flex aspect-square min-h-[3.35rem] min-w-0 flex-col rounded-lg border p-1.5 transition sm:min-h-[3.5rem] sm:rounded-xl sm:p-2";
+  if (!hasAct) {
+    return `${base} border-amber-200/70 bg-white/95 text-amber-900/40 shadow-sm`;
+  }
+  if (brewCount > 0 && cafeCount > 0) {
+    return `${base} border-amber-300/80 bg-gradient-to-br from-amber-50/95 via-white to-rose-50/95 text-amber-950 shadow-sm active:scale-[0.98]`;
+  }
+  if (brewCount > 0) {
+    return `${base} border-amber-300/70 bg-amber-50/90 text-amber-950 shadow-sm active:scale-[0.98]`;
+  }
+  return `${base} border-rose-200/80 bg-rose-50/85 text-amber-950 shadow-sm active:scale-[0.98]`;
+}
+
+function CalendarDayContent({
+  day,
+  hasAct,
+  brewCount,
+  cafeCount,
+  pairingEmoji
+}: {
+  day: number;
+  hasAct: boolean;
+  brewCount: number;
+  cafeCount: number;
+  pairingEmoji?: string;
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-start justify-between gap-1">
+        <span
+          className={`shrink-0 text-[13px] font-light tabular-nums leading-none sm:text-sm ${
+            hasAct ? "text-amber-950" : "text-amber-800/45"
+          }`}
+        >
+          {day}
+        </span>
+        {hasAct && (
+          <div
+            className="flex shrink-0 items-center gap-0.5 pt-0.5"
+            aria-label={
+              brewCount > 0 && cafeCount > 0
+                ? `自宅抽出${brewCount}件、カフェ${cafeCount}件`
+                : brewCount > 0
+                  ? `自宅抽出${brewCount}件`
+                  : `カフェ訪問${cafeCount}件`
+            }
+          >
+            {brewCount > 0 && (
+              <span className="h-2 w-2 rounded-full bg-amber-500 shadow-sm ring-1 ring-amber-600/20" />
+            )}
+            {cafeCount > 0 && (
+              <span className="h-2 w-2 rounded-full bg-rose-500 shadow-sm ring-1 ring-rose-600/20" />
+            )}
+          </div>
+        )}
+      </div>
+      {pairingEmoji && (
+        <span className="mt-auto self-end text-[10px] leading-none opacity-90 sm:text-[11px]" aria-hidden>
+          {pairingEmoji}
+        </span>
+      )}
+      {hasAct && (
+        <div className="mt-1 hidden flex-wrap gap-0.5 sm:flex">
+          {brewCount > 0 && (
+            <span className="rounded bg-amber-100/90 px-1 py-px text-[9px] font-medium tabular-nums text-amber-900/80">
+              自宅{brewCount}
+            </span>
+          )}
+          {cafeCount > 0 && (
+            <span className="rounded bg-rose-100/90 px-1 py-px text-[9px] font-medium tabular-nums text-rose-900/80">
+              カフェ{cafeCount}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function HistoryPage() {
@@ -221,41 +216,6 @@ export default function HistoryPage() {
     const currentYear = new Date().getFullYear();
     return Array.from({ length: 16 }, (_, index) => currentYear - 10 + index);
   }, []);
-  const stampByDate = useMemo(() => {
-    const map = new Map<
-      string,
-      { kindIndex: number; rotate: number; x: number; y: number; opacity: number; cafeTone: boolean }
-    >();
-    calendarDays.forEach((date) => {
-      if (!date) {
-        return;
-      }
-      const key = formatDateKey(date);
-      const activity = activityByDate.get(key);
-      if (!dayHasActivity(activity)) {
-        return;
-      }
-      const bc = activity!.brews.length;
-      const cc = activity!.cafes.length;
-      const cafeOnly = bc === 0 && cc > 0;
-      const seedBase = bc > 0 ? `${key}-brew` : `${key}-cafe`;
-      const r1 = seededRandom(`${seedBase}-kind`);
-      const r2 = seededRandom(`${seedBase}-rot`);
-      const r3 = seededRandom(`${seedBase}-x`);
-      const r4 = seededRandom(`${seedBase}-y`);
-      const r5 = seededRandom(`${seedBase}-opacity`);
-      const kindIndex = cafeOnly ? 1 : Math.floor(r1 * stampKinds.length);
-      map.set(key, {
-        kindIndex,
-        rotate: -12 + r2 * 24,
-        x: -4 + r3 * 8,
-        y: -4 + r4 * 8,
-        opacity: 0.38 + r5 * 0.28,
-        cafeTone: cafeOnly
-      });
-    });
-    return map;
-  }, [calendarDays, activityByDate]);
   const pairingByDate = useMemo(() => {
     const map = new Map<string, string>();
     logs.forEach((log) => {
@@ -273,8 +233,8 @@ export default function HistoryPage() {
   }, [logs, cafes]);
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-2 py-3 sm:px-4 sm:py-5 md:px-6">
-      <section className="rounded-2xl border border-amber-900/15 bg-white/90 p-3 shadow-xl shadow-amber-950/10 backdrop-blur-sm sm:rounded-3xl sm:p-5 md:p-6">
+    <main className="mx-auto w-full max-w-5xl px-1 py-3 pb-24 sm:px-4 sm:py-5 sm:pb-28 md:px-6">
+      <section className="rounded-2xl border border-amber-900/15 bg-white/90 p-2 shadow-xl shadow-amber-950/10 backdrop-blur-sm sm:rounded-3xl sm:p-5 md:p-6">
         <header className="border-b border-amber-200/60 pb-3 sm:pb-4">
           <h1 className="text-xl font-bold tracking-tight text-amber-950 sm:text-2xl">
             Coffee Calendar
@@ -284,7 +244,7 @@ export default function HistoryPage() {
           </p>
         </header>
 
-        <div className="mt-3 rounded-2xl border border-amber-200/80 bg-gradient-to-b from-amber-50/90 to-white p-2 shadow-inner shadow-amber-100/50 sm:mt-4 sm:p-4 md:p-5">
+        <div className="mt-3 rounded-2xl border border-amber-200/80 bg-gradient-to-b from-amber-50/90 to-white p-1.5 shadow-inner shadow-amber-100/50 sm:mt-4 sm:p-4 md:p-5">
           <div className="mb-3 grid grid-cols-2 gap-2 sm:mb-4 sm:gap-3">
             <label className="flex flex-col gap-2 text-sm font-semibold text-amber-900">
               Year
@@ -352,21 +312,22 @@ export default function HistoryPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-7 gap-1.5 text-center text-[11px] font-bold tracking-tight text-amber-800/80 sm:gap-2 sm:text-xs sm:tracking-normal md:text-sm">
+          <div className="grid grid-cols-7 gap-2 text-center text-[11px] font-medium tracking-tight text-amber-800/75 sm:gap-2.5 sm:text-xs md:text-sm">
             {weekdayLabels.map((label) => (
-              <div key={label} className="py-1 sm:py-1.5">
+              <div key={label} className="py-0.5 sm:py-1">
                 {label}
               </div>
             ))}
           </div>
 
-          <div className="mt-2 grid w-full grid-cols-7 gap-1.5 sm:mt-2.5 sm:gap-2 md:gap-2.5">
+          <div className="mt-1.5 grid w-full grid-cols-7 gap-2 sm:mt-2 sm:gap-2.5 md:gap-3">
             {calendarDays.map((date, index) => {
               if (!date) {
                 return (
                   <div
                     key={`empty-${index}`}
-                    className="aspect-square min-h-0 rounded-xl bg-transparent"
+                    className="aspect-square min-h-[3.35rem] min-w-0 sm:min-h-[3.5rem]"
+                    aria-hidden
                   />
                 );
               }
@@ -376,73 +337,19 @@ export default function HistoryPage() {
               const hasAct = dayHasActivity(activity);
               const brewCount = activity?.brews.length ?? 0;
               const cafeCount = activity?.cafes.length ?? 0;
-              const stampMeta = stampByDate.get(dateKey);
-
-              const cellClass = (() => {
-                if (!hasAct) {
-                  return "relative flex aspect-square min-h-[2.85rem] min-w-0 flex-col overflow-hidden rounded-xl border border-amber-200/90 bg-white/95 p-1.5 text-left text-amber-900/45 shadow-sm transition sm:min-h-0 sm:p-2";
-                }
-                if (brewCount > 0 && cafeCount > 0) {
-                  return "relative flex aspect-square min-h-[2.85rem] min-w-0 flex-col overflow-hidden rounded-xl border border-amber-500 bg-gradient-to-br from-amber-100 via-amber-50 to-rose-100/90 p-1.5 text-left shadow-md shadow-amber-900/10 ring-2 ring-amber-400/35 ring-offset-0 ring-offset-transparent transition hover:from-amber-200 hover:via-amber-100 hover:to-rose-50 hover:ring-amber-500/45 active:scale-[0.98] sm:min-h-0 sm:p-2";
-                }
-                if (brewCount > 0) {
-                  return "relative flex aspect-square min-h-[2.85rem] min-w-0 flex-col overflow-hidden rounded-xl border border-amber-500 bg-gradient-to-br from-amber-100 via-amber-50 to-amber-200/90 p-1.5 text-left shadow-md shadow-amber-900/10 ring-1 ring-amber-400/40 transition hover:from-amber-200 hover:via-amber-100 hover:to-amber-200 hover:ring-amber-500/50 active:scale-[0.98] sm:min-h-0 sm:p-2";
-                }
-                return "relative flex aspect-square min-h-[2.85rem] min-w-0 flex-col overflow-hidden rounded-xl border border-rose-400 bg-gradient-to-br from-rose-50 via-white to-rose-100/90 p-1.5 text-left shadow-md shadow-rose-900/10 ring-1 ring-rose-300/50 transition hover:from-rose-100 hover:via-rose-50/90 hover:to-rose-100 hover:ring-rose-400/60 active:scale-[0.98] sm:min-h-0 sm:p-2";
-              })();
-
+              const cellClass = calendarCellClass(hasAct, brewCount, cafeCount);
               const dayHref =
                 brewCount > 0
                   ? `/journal?date=${encodeURIComponent(dateKey)}`
                   : "/cafe-map";
-
-              const inner = (
-                <>
-                  <span
-                    className={`relative z-20 shrink-0 text-sm font-bold tabular-nums sm:text-base ${
-                      hasAct ? "text-amber-950" : "text-amber-800/50"
-                    }`}
-                  >
-                    {date.getDate()}
-                  </span>
-                  {hasAct && stampMeta && (
-                    <>
-                      <div
-                        className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center p-1 sm:p-1.5"
-                        style={{
-                          transform: `translate(${stampMeta.x}px, ${stampMeta.y}px) rotate(${stampMeta.rotate}deg)`,
-                          opacity: stampMeta.opacity
-                        }}
-                      >
-                        <div className="h-[76%] w-[76%] max-h-[5.25rem] max-w-[5.25rem] sm:h-[70%] sm:w-[70%] sm:max-h-[5.5rem] sm:max-w-[5.5rem]">
-                          <StampIllustration
-                            kind={stampKinds[stampMeta.kindIndex]}
-                            seed={dateKey}
-                            emphasis
-                            cafeTone={stampMeta.cafeTone}
-                          />
-                        </div>
-                      </div>
-                      <div className="absolute bottom-1 left-1/2 z-20 flex max-w-[95%] -translate-x-1/2 flex-wrap items-center justify-center gap-0.5 sm:bottom-1.5">
-                        {brewCount > 0 && (
-                          <span className="rounded-full bg-amber-900 px-1.5 py-0.5 text-[9px] font-bold tabular-nums text-amber-50 shadow sm:text-[10px]">
-                            自宅{brewCount}
-                          </span>
-                        )}
-                        {cafeCount > 0 && (
-                          <span className="rounded-full bg-rose-800 px-1.5 py-0.5 text-[9px] font-bold tabular-nums text-rose-50 shadow sm:text-[10px]">
-                            カフェ{cafeCount}
-                          </span>
-                        )}
-                      </div>
-                      {pairingByDate.get(dateKey) && (
-                        <span className="absolute right-0.5 top-0.5 z-20 flex h-6 w-6 items-center justify-center rounded-full bg-white/90 text-sm shadow ring-1 ring-amber-200/80 sm:right-1 sm:top-1 sm:h-7 sm:w-7 sm:text-base">
-                          {pairingByDate.get(dateKey)}
-                        </span>
-                      )}
-                    </>
-                  )}
-                </>
+              const content = (
+                <CalendarDayContent
+                  day={date.getDate()}
+                  hasAct={hasAct}
+                  brewCount={brewCount}
+                  cafeCount={cafeCount}
+                  pairingEmoji={pairingByDate.get(dateKey)}
+                />
               );
 
               return hasAct ? (
@@ -452,17 +359,17 @@ export default function HistoryPage() {
                   prefetch
                   className={`${cellClass} min-w-0 cursor-pointer`}
                 >
-                  {inner}
+                  {content}
                 </Link>
               ) : (
                 <div key={dateKey} className={`${cellClass} min-w-0`}>
-                  {inner}
+                  {content}
                 </div>
               );
             })}
           </div>
 
-          <p className="mt-2.5 text-[11px] leading-relaxed text-amber-900/75 sm:mt-3 sm:text-xs md:text-sm">
+          <p className="mt-5 border-t border-amber-200/50 pt-3 text-[10px] leading-relaxed text-amber-900/60 sm:mt-6 sm:text-[11px]">
             <span className="font-semibold text-amber-900">琥珀</span>は自宅抽出、
             <span className="font-semibold text-rose-800">ローズ</span>
             はカフェ訪問の日。タップで抽出がある日は{" "}
