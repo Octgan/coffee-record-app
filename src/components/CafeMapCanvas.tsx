@@ -42,8 +42,8 @@ type CafeMapCanvasProps = {
   userPosition: [number, number] | null;
   registrationCoords: [number, number] | null;
   onMapClick: (lat: number, lng: number) => void;
-  /** カフェのマーカーを押したとき（吹き出しはシンプル表示・詳細は親のカードで） */
   onCafeMarkerClick: (record: CafeRecord) => void;
+  className?: string;
 };
 
 export default function CafeMapCanvas({
@@ -53,7 +53,8 @@ export default function CafeMapCanvas({
   userPosition,
   registrationCoords,
   onMapClick,
-  onCafeMarkerClick
+  onCafeMarkerClick,
+  className = "h-full min-h-[min(52vh,480px)] w-full"
 }: CafeMapCanvasProps) {
   const [isMounted, setIsMounted] = useState(false);
   const [coffeeIcon, setCoffeeIcon] = useState<DivIcon | null>(null);
@@ -103,7 +104,7 @@ export default function CafeMapCanvas({
   }, [isMounted]);
 
   if (!isMounted) {
-    return <div className="h-full w-full bg-amber-100/50" />;
+    return <div className={`${className} bg-amber-100/50`} />;
   }
 
   const showUserMarker =
@@ -114,7 +115,7 @@ export default function CafeMapCanvas({
       Math.abs(userPosition[1] - registrationCoords[1]) > 0.000_02);
 
   return (
-    <div className="h-[min(78vh,calc(100dvh-11rem))] min-h-[460px] w-full bg-[#f5efe3]">
+    <div className={`${className} bg-[#f5efe3]`}>
       <MapContainer center={mapCenter} zoom={mapZoom} scrollWheelZoom className="h-full w-full">
         <MapViewSync center={mapCenter} zoom={mapZoom} />
         <MapClickLayer onMapClick={onMapClick} />
@@ -134,24 +135,12 @@ export default function CafeMapCanvas({
                   onCafeMarkerClick(record);
                 }
               }}
-            >
-              {/* Leaflet 既定に近いシンプルな吹き出し（カスタムシェル・アニメなし） */}
-              <Popup>
-                <div className="max-w-[220px] text-[13px] leading-snug text-neutral-800">
-                  <p className="m-0 font-semibold text-neutral-900">{record.cafeName}</p>
-                  <p className="mt-1 mb-0 text-[12px] text-neutral-600">{record.date}</p>
-                  <p className="mt-0.5 mb-0 text-[12px]">
-                    <span className="text-amber-600">{"★".repeat(record.rating)}</span>
-                    <span className="text-neutral-300">{"★".repeat(5 - record.rating)}</span>
-                  </p>
-                </div>
-              </Popup>
-            </Marker>
+            />
           ))}
 
         {registrationCoords && registrationIcon && (
           <Marker position={registrationCoords} icon={registrationIcon} zIndexOffset={600}>
-            <Popup>この位置でスポットを保存します（名前は右側で編集）</Popup>
+            <Popup>この位置で記録します</Popup>
           </Marker>
         )}
 

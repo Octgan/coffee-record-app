@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import CafeMapDetailCard from "@/components/CafeMapDetailCard";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compressImageFileForUpload } from "@/lib/compressImageForUpload";
 import {
@@ -13,7 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 const CafeMapCanvas = dynamic(() => import("@/components/CafeMapCanvas"), {
   ssr: false,
   loading: () => (
-    <div className="h-[min(78vh,calc(100dvh-11rem))] min-h-[460px] bg-amber-100/50" />
+    <div className="h-full min-h-[min(56vh,400px)] bg-amber-100/50" />
   )
 });
 const defaultCenter: [number, number] = [35.6804, 139.769];
@@ -48,10 +49,7 @@ export default function CafeMapPage() {
   const [userPosition, setUserPosition] = useState<[number, number] | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>(defaultCenter);
   const [isLocating, setIsLocating] = useState(false);
-  const [locationMessage, setLocationMessage] = useState(
-    "地図をタップして位置を決めたり、カフェのピンをタップすると下から詳細カードが開きます。「＋ ここで記録する」で新しいカフェ記録を追加できます。"
-  );
-  /** ピン選択時のみ下部に詳細カードを表示（常時リストは出さない） */
+  /** ピン選択時のみ下部固定エリアに詳細カードを表示 */
   const [selectedCafeId, setSelectedCafeId] = useState<number | null>(null);
   const reduceMotion = useReducedMotion() ?? false;
   const [candidateName, setCandidateName] = useState("");
@@ -192,7 +190,6 @@ export default function CafeMapPage() {
       }
     } else {
       if (!navigator.geolocation) {
-        setLocationMessage("位置情報に対応していません。地図をタップして場所を指定してください。");
         return;
       }
       setIsLocating(true);
@@ -216,7 +213,6 @@ export default function CafeMapPage() {
           place = hint.placeLabel;
         }
       } catch {
-        setLocationMessage("位置情報の取得に失敗しました。地図をタップで場所を指定できます。");
         return;
       } finally {
         setIsLocating(false);
@@ -245,21 +241,7 @@ export default function CafeMapPage() {
       foodPairing: pairing.trim() ? pairing.trim().slice(0, 120) : undefined,
       photoUrl: DEFAULT_CAFE_PHOTO_URL
     });
-    setLocationMessage(
-      "店名・評価・ドリンク名・写真を入力し、「保存」でマップにピンが追加されます。"
-    );
   }, [registrationCoords, candidateName, candidatePlace, pairing, records]);
-
-  const centerLabel = useMemo(
-    () => `地図の中心: ${mapCenter[0].toFixed(4)}, ${mapCenter[1].toFixed(4)}`,
-    [mapCenter]
-  );
-  const registrationLabel = useMemo(() => {
-    if (!registrationCoords) {
-      return "記録する位置: 未設定（地図をタップするか「＋」で現在地）";
-    }
-    return `記録する位置: ${registrationCoords[0].toFixed(5)}, ${registrationCoords[1].toFixed(5)}`;
-  }, [registrationCoords]);
 
   const openCafeRecordEdit = useCallback((record: CafeRecord) => {
     setEditingIsNew(false);
@@ -270,9 +252,6 @@ export default function CafeMapPage() {
     const pos: [number, number] = [lat, lng];
     setSelectedCafeId(null);
     setRegistrationCoords(pos);
-    setLocationMessage(
-      "タップした位置で記録します。下の「店名」で直したあと「＋ ここで記録する」で入力画面を開けます。カフェのピンをタップすると、地図下に詳細カードが開きます。"
-    );
     const hint = await reverseGeocodeSuggestion(lat, lng);
     setCandidateName(hint.nameSuggestion ? `マイスポット（${hint.nameSuggestion}）` : "");
     setCandidatePlace(hint.placeLabel);
@@ -341,7 +320,7 @@ export default function CafeMapPage() {
               Coffee Spot Explorer
             </h1>
             <p className="mt-2 text-sm text-amber-900/80">
-              地図からコーヒー遍歴を振り返り、今いる場所ですぐ記録できます。
+              地図のピンをタップして記録を確認。地図をタップして位置を決め、「＋」で新規記録を追加できます。
             </p>
           </div>
           <button
@@ -354,12 +333,10 @@ export default function CafeMapPage() {
           </button>
         </div>
 
-        <div className="flex flex-col gap-4">
-          <div className="relative overflow-hidden rounded-2xl border border-amber-200">
-            <p className="pointer-events-none absolute bottom-3 left-3 right-3 z-[400] rounded-xl border border-amber-200/80 bg-white/90 px-3 py-2 text-center text-xs text-amber-900/90 shadow sm:left-auto sm:right-3 sm:max-w-sm sm:text-left">
-              地図をタップして位置を決め、カフェのピンをタップすると下から詳細カードが開きます。「＋ ここで記録する」で新しい記録を追加します。
-            </p>
+        <motion.div className="flex min-h-[min(72vh,calc(100dvh-12rem))] flex-col overflow-hidden rounded-2xl border border-amber-200 bg-[#faf6f0]">
+          <div className="relative min-h-0 flex-1">
             <CafeMapCanvas
+              className="absolute inset-0 h-full w-full"
               records={records}
               mapCenter={mapCenter}
               userPosition={userPosition}
@@ -367,190 +344,37 @@ export default function CafeMapPage() {
               onMapClick={handleMapSelectSpot}
               onCafeMarkerClick={(record) => setSelectedCafeId(record.id)}
             />
+          </div>
 
-            <AnimatePresence>
-              {selectedCafeRecord && (
-                <motion.div
+          <motion.div
+            layout
+            className="shrink-0 border-t border-amber-200/80 bg-[#faf6f0] px-4 py-3 sm:px-5 sm:py-4"
+            transition={{ type: "spring", stiffness: 400, damping: 36 }}
+          >
+            <AnimatePresence mode="wait">
+              {selectedCafeRecord ? (
+                <CafeMapDetailCard
                   key={selectedCafeRecord.id}
-                  className="pointer-events-none absolute inset-0 z-[430]"
+                  record={selectedCafeRecord}
+                  onEdit={openCafeRecordEdit}
+                  onDelete={handleDeleteRecord}
+                  onClose={() => setSelectedCafeId(null)}
+                />
+              ) : (
+                <motion.p
+                  key="cafe-detail-placeholder"
                   initial={reduceMotion ? false : { opacity: 0 }}
                   animate={reduceMotion ? undefined : { opacity: 1 }}
                   exit={reduceMotion ? undefined : { opacity: 0 }}
-                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                  className="min-h-10 py-1 text-center text-xs text-amber-900/45 sm:text-sm"
                 >
-                  <motion.button
-                    type="button"
-                    aria-label="詳細を閉じる"
-                    className="pointer-events-auto absolute inset-0 bg-amber-950/20 backdrop-blur-[1px]"
-                    initial={reduceMotion ? false : { opacity: 0 }}
-                    animate={reduceMotion ? undefined : { opacity: 1 }}
-                    exit={reduceMotion ? undefined : { opacity: 0 }}
-                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                    onClick={() => setSelectedCafeId(null)}
-                  />
-                  <motion.div
-                    role="dialog"
-                    aria-modal="false"
-                    aria-labelledby="cafe-detail-title"
-                    className="pointer-events-auto absolute inset-x-0 bottom-0 max-h-[min(58vh,520px)] rounded-t-3xl border border-amber-200/90 border-b-0 bg-gradient-to-b from-[#fffbeb] to-[#fef3c7] shadow-[0_-12px_40px_rgba(69,26,3,0.12)]"
-                    initial={
-                      reduceMotion
-                        ? false
-                        : { y: "100%", opacity: 0.92, filter: "blur(4px)" }
-                    }
-                    animate={
-                      reduceMotion
-                        ? undefined
-                        : { y: 0, opacity: 1, filter: "blur(0px)" }
-                    }
-                    exit={
-                      reduceMotion
-                        ? undefined
-                        : { y: "100%", opacity: 0.85, filter: "blur(3px)" }
-                    }
-                    transition={{
-                      type: "spring",
-                      stiffness: 380,
-                      damping: 34,
-                      mass: 0.72
-                    }}
-                  >
-                    <div className="mx-auto flex max-h-[min(58vh,520px)] w-full max-w-lg flex-col px-4 pb-5 pt-3 sm:px-5">
-                      <div className="mx-auto mb-2 h-1 w-10 shrink-0 rounded-full bg-amber-300/80" aria-hidden />
-                      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain">
-                        <div className="flex shrink-0 items-start justify-between gap-2">
-                          <h2
-                            id="cafe-detail-title"
-                            className="text-base font-bold leading-snug text-amber-950 sm:text-lg"
-                          >
-                            {selectedCafeRecord.cafeName}
-                          </h2>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedCafeId(null)}
-                            className="shrink-0 rounded-full border border-amber-300/80 bg-white/90 px-2.5 py-1 text-xs font-semibold text-amber-900 transition hover:bg-amber-50"
-                          >
-                            閉じる
-                          </button>
-                        </div>
-                        {selectedCafeRecord.photoUrl && (
-                          <div className="relative shrink-0 overflow-hidden rounded-2xl ring-1 ring-amber-200/80">
-                            <img
-                              src={selectedCafeRecord.photoUrl}
-                              alt={selectedCafeRecord.cafeName}
-                              className="h-36 w-full object-cover sm:h-40"
-                            />
-                          </div>
-                        )}
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-amber-900/90">
-                          <span className="font-medium text-amber-800">
-                            訪問日 {selectedCafeRecord.date}
-                          </span>
-                          <span className="text-amber-700" aria-label={`評価 ${selectedCafeRecord.rating} / 5`}>
-                            <span className="text-amber-600">{"★".repeat(selectedCafeRecord.rating)}</span>
-                            <span className="text-amber-300">{"★".repeat(5 - selectedCafeRecord.rating)}</span>
-                          </span>
-                        </div>
-                        {selectedCafeRecord.bean.trim() !== "" &&
-                          selectedCafeRecord.bean !== "未入力" && (
-                            <p className="text-sm text-amber-900/90">
-                              <span className="font-semibold text-amber-800">ドリンク</span>{" "}
-                              {selectedCafeRecord.bean}
-                            </p>
-                          )}
-                        {selectedCafeRecord.foodPairing && (
-                          <p className="text-sm text-amber-900/85">
-                            <span className="font-semibold text-amber-800">お供</span>{" "}
-                            {selectedCafeRecord.foodPairing}
-                          </p>
-                        )}
-                        {selectedCafeRecord.note.trim() !== "" && (
-                          <p className="text-sm leading-relaxed text-amber-900/85">
-                            <span className="font-semibold text-amber-800">メモ</span>
-                            <br />
-                            {selectedCafeRecord.note}
-                          </p>
-                        )}
-                        <div className="sticky bottom-0 mt-1 flex shrink-0 flex-wrap gap-2 border-t border-amber-200/70 bg-gradient-to-t from-[#fef3c7] via-[#fef3c7]/95 to-transparent pb-0.5 pt-3">
-                          <button
-                            type="button"
-                            onClick={() => openCafeRecordEdit(selectedCafeRecord)}
-                            className="rounded-xl bg-amber-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-amber-800"
-                          >
-                            編集
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteRecord(selectedCafeRecord)}
-                            className="rounded-xl border border-red-300/90 bg-white px-4 py-2.5 text-sm font-bold text-red-800 transition hover:bg-red-50"
-                          >
-                            削除
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                </motion.div>
+                  地図のピンをタップすると、ここに記録の詳細が表示されます
+                </motion.p>
               )}
             </AnimatePresence>
-          </div>
+          </motion.div>
+        </motion.div>
 
-          <aside className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 sm:p-5">
-            <h2 className="text-base font-semibold text-amber-900">記録前のメモ</h2>
-            <p className="mt-2 text-sm text-amber-900/80">{locationMessage}</p>
-            <p className="mt-1 text-xs text-amber-900/60">{registrationLabel}</p>
-            <p className="mt-0.5 text-xs text-amber-900/50">{centerLabel}</p>
-
-            <div className="mt-4 space-y-3">
-              <label className="block rounded-xl border border-amber-200 bg-white p-3">
-                <span className="text-xs font-semibold text-amber-700">店名（記録モーダルの「店名」に最初から入ります）</span>
-                <input
-                  type="text"
-                  value={candidateName}
-                  onChange={(event) => setCandidateName(event.target.value)}
-                  className="mt-2 w-full rounded-lg border border-amber-200 px-3 py-2 text-sm text-amber-950 placeholder:text-amber-900/40 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  placeholder="例: お気に入りのカフェ名"
-                  autoComplete="off"
-                />
-                <p className="mt-2 text-xs leading-relaxed text-amber-900/65">
-                  位置は地図のタップ、「＋」での現在地取得で決まります。名前を整えてから「＋ ここで記録する」で入力画面を開いてください。
-                </p>
-              </label>
-              <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/80 p-3">
-                <p className="text-xs font-semibold text-amber-700">位置メモ（自動）</p>
-                <p className="mt-1 text-sm text-amber-900">
-                  {candidatePlace || "地図をタップするか「＋」で現在地を取得すると、付近の地名がここに表示されます。"}
-                </p>
-              </div>
-              <div className="rounded-xl border border-amber-200 bg-white p-3">
-                <p className="text-xs font-semibold text-amber-700">お供（任意・記録モーダルに引き継ぎ）</p>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {pairingTags.map((tag) => (
-                    <button
-                      key={tag}
-                      type="button"
-                      onClick={() => setPairing(tag)}
-                      className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-                        pairing === tag
-                          ? "bg-amber-700 text-white"
-                          : "bg-amber-100 text-amber-900 hover:bg-amber-200"
-                      }`}
-                    >
-                      {tag}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="text"
-                  value={pairing}
-                  onChange={(event) => setPairing(event.target.value)}
-                  className="mt-2 w-full rounded-lg border border-amber-200 px-3 py-2 text-sm text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                  placeholder="例: カヌレ"
-                />
-              </div>
-            </div>
-          </aside>
-        </div>
       </section>
 
       {editingDraft && (
