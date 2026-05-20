@@ -223,20 +223,25 @@ function LogEntryArticle({ log, onDelete, deleteDisabled }: LogEntryArticleProps
           </p>
         )}
         {supportsBrewDoseRatio(log.method) &&
-          log.coffeeDoseG != null &&
-          log.coffeeDoseG > 0 &&
           log.totalWaterMl != null &&
           log.totalWaterMl > 0 && (
             <p>
-              <span className="font-semibold text-amber-900">豆量・レシオ・湯量</span>
+              <span className="font-semibold text-amber-900">
+                {log.coffeeDoseG != null && log.coffeeDoseG > 0
+                  ? "豆量・レシオ・湯量"
+                  : "湯量"}
+              </span>
               <span className="mx-2 text-amber-800/50">·</span>
               <span className="tabular-nums">
-                {log.coffeeDoseG}g
-                {log.brewRatio != null && log.brewRatio > 0
-                  ? ` · ${formatBrewRatioLabel(log.brewRatio)}`
-                  : ""}
-                {" · "}
-                {log.totalWaterMl}ml
+                {[
+                  log.coffeeDoseG != null && log.coffeeDoseG > 0 ? `${log.coffeeDoseG}g` : null,
+                  log.brewRatio != null && log.brewRatio > 0
+                    ? formatBrewRatioLabel(log.brewRatio)
+                    : null,
+                  `${log.totalWaterMl}ml`
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </span>
             </p>
           )}

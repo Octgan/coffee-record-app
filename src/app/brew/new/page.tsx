@@ -19,6 +19,7 @@ import { COFFEE_ORIGINS } from "@/lib/coffeeOrigins";
 import { createClient } from "@/lib/supabase/client";
 import { compressImageFileForUpload } from "@/lib/compressImageForUpload";
 import BrewDoseRatioPanel from "@/components/BrewDoseRatioPanel";
+import { DripTimerLaunchSection } from "@/components/OpenDripTimerButton";
 import {
   buildTimerRecipeFromDose,
   defaultBrewDoseRatioValues,
@@ -73,6 +74,119 @@ function parseSmallIntInput(value: string): number | undefined {
   }
   return Math.round(Math.min(32767, Math.max(-32768, n)));
 }
+
+function PaperFilterFields({
+  paperFilter,
+  onPaperFilterChange,
+  disabled = false
+}: {
+  paperFilter: string;
+  onPaperFilterChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="flex flex-col gap-2 text-sm font-semibold text-amber-950 sm:col-span-2">
+      ペーパーフィルター（Paper Filter）
+      <span className="text-xs font-normal text-amber-900/85">
+        よく使う形状をタップして選ぶか、ブランド名・枚数などを自由入力できます。
+      </span>
+      <div className="flex flex-wrap gap-2">
+        {paperFilterPresets.map((preset) => {
+          const active = paperFilter === preset;
+          return (
+            <button
+              key={preset}
+              type="button"
+              disabled={disabled}
+              onClick={() =>
+                onPaperFilterChange(preset === "その他（自由入力）" ? "" : preset)
+              }
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                active
+                  ? "bg-amber-800 text-white shadow-sm"
+                  : "border border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100"
+              } disabled:opacity-60`}
+            >
+              {preset}
+            </button>
+          );
+        })}
+      </div>
+      <input
+        type="text"
+        list="paper-filter-suggestions"
+        value={paperFilter}
+        disabled={disabled}
+        onChange={(event) => onPaperFilterChange(event.target.value)}
+        className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-60"
+        placeholder="例: Hario 円錐 01 / カリタ 102 ブラウン"
+        autoComplete="off"
+      />
+      <datalist id="paper-filter-suggestions">
+        {paperFilterPresets.map((preset) => (
+          <option key={preset} value={preset} />
+        ))}
+      </datalist>
+    </label>
+  );
+}
+
+function WaterTypeFields({
+  waterType,
+  onWaterTypeChange,
+  disabled = false
+}: {
+  waterType: string;
+  onWaterTypeChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="flex flex-col gap-2 text-sm font-semibold text-amber-950">
+      使用した水（Water）
+      <span className="text-xs font-normal text-amber-900/85">
+        よく使う水を選ぶか、銘柄・硬度などを自由入力してください。
+      </span>
+      <div className="flex flex-wrap gap-2">
+        {waterTypePresets.map((preset) => {
+          const active = waterType === preset;
+          return (
+            <button
+              key={preset}
+              type="button"
+              disabled={disabled}
+              onClick={() =>
+                onWaterTypeChange(preset === "その他（自由入力）" ? "" : preset)
+              }
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                active
+                  ? "bg-sky-800 text-white shadow-sm"
+                  : "border border-sky-300/80 bg-white text-sky-950 hover:bg-sky-100"
+              } disabled:opacity-60`}
+            >
+              {preset}
+            </button>
+          );
+        })}
+      </div>
+      <input
+        type="text"
+        list="water-type-suggestions"
+        value={waterType}
+        disabled={disabled}
+        onChange={(event) => onWaterTypeChange(event.target.value)}
+        className="rounded-xl border border-sky-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-sky-400 disabled:opacity-60"
+        placeholder="例: エビス軟水 / ペルエチオ / 自宅の浄水器"
+        autoComplete="off"
+      />
+      <datalist id="water-type-suggestions">
+        {waterTypePresets.map((preset) => (
+          <option key={preset} value={preset} />
+        ))}
+      </datalist>
+    </label>
+  );
+}
+
 const brewMethodCards: { value: string; label: string; icon: React.ReactNode }[] = [
   {
     value: "ハンドドリップ",
@@ -292,6 +406,7 @@ function BrewNewPageContent() {
   const [brewDoseValues, setBrewDoseValues] = useState<BrewDoseRatioValues>(() =>
     defaultBrewDoseRatioValues()
   );
+  const [beginnerWaterMl, setBeginnerWaterMl] = useState("");
   const [timerAppliedMessage, setTimerAppliedMessage] = useState<string | null>(null);
   const brewPhotoInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -342,6 +457,7 @@ function BrewNewPageContent() {
     setWaterType("");
     setTotalBrewTimeSec("");
     setBrewDoseValues(defaultBrewDoseRatioValues());
+    setBeginnerWaterMl("");
     setTimerAppliedMessage(null);
     prevBrewMethodRef.current = brewMethods[0];
   }, []);
@@ -414,7 +530,8 @@ function BrewNewPageContent() {
           Boolean(log.grindSize) ||
           Boolean(log.paperFilter) ||
           Boolean(log.waterType) ||
-          (log.coffeeDoseG != null && log.coffeeDoseG > 0);
+          (log.coffeeDoseG != null && log.coffeeDoseG > 0) ||
+          (log.totalWaterMl != null && log.totalWaterMl > 0);
         setMode(usePro ? "pro" : "beginner");
         const lat = log.cafeLat;
         const lng = log.cafeLng;
@@ -451,6 +568,9 @@ function BrewNewPageContent() {
         } else {
           setBrewDoseValues(defaultBrewDoseRatioValues());
         }
+        setBeginnerWaterMl(
+          log.totalWaterMl != null && log.totalWaterMl > 0 ? String(log.totalWaterMl) : ""
+        );
         setBrewPhotoError(null);
         setFormDirty(false);
         prevBrewMethodRef.current = log.method;
@@ -481,6 +601,18 @@ function BrewNewPageContent() {
       prevBrewMethodRef.current = brewMethod;
     }
   }, [brewMethod]);
+
+  useEffect(() => {
+    if (mode !== "beginner") {
+      return;
+    }
+    if (beginnerWaterMl.trim() !== "") {
+      return;
+    }
+    if (brewDoseValues.totalWaterMl > 0) {
+      setBeginnerWaterMl(String(brewDoseValues.totalWaterMl));
+    }
+  }, [mode, beginnerWaterMl, brewDoseValues.totalWaterMl]);
 
   useEffect(() => {
     if (editingId != null) {
@@ -631,10 +763,24 @@ function BrewNewPageContent() {
     }
   };
 
+  const doseValuesForTimer = useCallback((): BrewDoseRatioValues => {
+    if (mode === "pro") {
+      return brewDoseValues;
+    }
+    const water = parseSmallIntInput(beginnerWaterMl);
+    return {
+      ...defaultBrewDoseRatioValues(),
+      totalWaterMl: water ?? brewDoseValues.totalWaterMl
+    };
+  }, [mode, brewDoseValues, beginnerWaterMl]);
+
   const syncTimerRecipeWithDose = useCallback(() => {
-    const recipe = buildTimerRecipeFromDose(brewDoseValues, loadDripTimerRecipe());
+    const recipe = buildTimerRecipeFromDose(doseValuesForTimer(), loadDripTimerRecipe());
     saveDripTimerRecipe(recipe);
-  }, [brewDoseValues]);
+  }, [doseValuesForTimer]);
+
+  const dripTimerReturnPath =
+    editingId != null ? `/brew/new?edit=${editingId}` : "/brew/new";
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -658,6 +804,26 @@ function BrewNewPageContent() {
     const paperFilterTrim = paperFilter.trim();
     const waterTypeTrim = waterType.trim();
     const totalBrewParsed = parseSmallIntInput(totalBrewTimeSec);
+    const beginnerWaterParsed = parseSmallIntInput(beginnerWaterMl);
+    const isProMode = mode === "pro";
+
+    const doseLogFields =
+      supportsBrewDoseRatio(brewMethod) && isProMode
+        ? brewDoseValues.coffeeDoseG > 0 &&
+          brewDoseValues.brewRatio > 0 &&
+          brewDoseValues.totalWaterMl > 0
+          ? {
+              coffeeDoseG: brewDoseValues.coffeeDoseG,
+              brewRatio: brewDoseValues.brewRatio,
+              totalWaterMl: brewDoseValues.totalWaterMl
+            }
+          : {}
+        : supportsBrewDoseRatio(brewMethod) &&
+            !isProMode &&
+            beginnerWaterParsed !== undefined &&
+            beginnerWaterParsed > 0
+          ? { totalWaterMl: beginnerWaterParsed }
+          : {};
 
     const draftLog: StoredBrewLog = {
       id: editingId ?? Date.now(),
@@ -676,18 +842,9 @@ function BrewNewPageContent() {
       flavors: selectedFlavors,
       aftertaste,
       memo,
-      ...(waterTypeTrim !== "" ? { waterType: waterTypeTrim } : {}),
+      ...(isProMode && waterTypeTrim !== "" ? { waterType: waterTypeTrim } : {}),
       ...(totalBrewParsed !== undefined ? { totalBrewTimeSec: totalBrewParsed } : {}),
-      ...(supportsBrewDoseRatio(brewMethod) &&
-      brewDoseValues.coffeeDoseG > 0 &&
-      brewDoseValues.brewRatio > 0 &&
-      brewDoseValues.totalWaterMl > 0
-        ? {
-            coffeeDoseG: brewDoseValues.coffeeDoseG,
-            brewRatio: brewDoseValues.brewRatio,
-            totalWaterMl: brewDoseValues.totalWaterMl
-          }
-        : {}),
+      ...doseLogFields,
       ...(cafeLinkCoords &&
       Number.isFinite(cafeLinkCoords.lat) &&
       Number.isFinite(cafeLinkCoords.lng)
@@ -712,7 +869,7 @@ function BrewNewPageContent() {
               ...(waterParsed !== undefined ? { waterTempC: waterParsed } : {}),
               ...(bloomParsed !== undefined ? { bloomTimeSec: bloomParsed } : {}),
               ...(grindTrim !== "" ? { grindSize: grindTrim } : {}),
-              ...(isHandDrip && paperFilterTrim !== ""
+              ...(isProMode && isHandDrip && paperFilterTrim !== ""
                 ? { paperFilter: paperFilterTrim }
                 : {})
             })
@@ -803,17 +960,6 @@ function BrewNewPageContent() {
               </p>
             </div>
             <div className="flex shrink-0 flex-wrap gap-2">
-              {supportsDripTimer(brewMethod) && (
-                <Link
-                  href={`/brew/timer?return=${encodeURIComponent(
-                    editingId != null ? `/brew/new?edit=${editingId}` : "/brew/new"
-                  )}`}
-                  onClick={syncTimerRecipeWithDose}
-                  className="rounded-lg border border-amber-600 bg-amber-700 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-800"
-                >
-                  ドリップタイマー
-                </Link>
-              )}
               {editingId != null && (
                 <Link
                   href="/brew/new"
@@ -912,103 +1058,6 @@ function BrewNewPageContent() {
               </div>
             )}
 
-            {brewMethod === BREW_METHOD_HAND_DRIP && (
-              <div className="rounded-xl border border-amber-300/80 bg-white/90 p-4">
-                <label className="flex flex-col gap-2 text-sm font-semibold text-amber-950">
-                  ペーパーフィルター（Paper Filter）
-                  <span className="text-xs font-normal text-amber-900/85">
-                    よく使う形状をタップして選ぶか、ブランド名・枚数などを自由入力できます。
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    {paperFilterPresets.map((preset) => {
-                      const active = paperFilter === preset;
-                      return (
-                        <button
-                          key={preset}
-                          type="button"
-                          onClick={() =>
-                            setPaperFilter(preset === "その他（自由入力）" ? "" : preset)
-                          }
-                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                            active
-                              ? "bg-amber-800 text-white shadow-sm"
-                              : "border border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100"
-                          }`}
-                        >
-                          {preset}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <input
-                    type="text"
-                    list="paper-filter-suggestions"
-                    value={paperFilter}
-                    onChange={(event) => setPaperFilter(event.target.value)}
-                    className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    placeholder="例: Hario 円錐 01 / カリタ 102 ブラウン"
-                    autoComplete="off"
-                  />
-                  <datalist id="paper-filter-suggestions">
-                    {paperFilterPresets.map((preset) => (
-                      <option key={preset} value={preset} />
-                    ))}
-                  </datalist>
-                </label>
-              </div>
-            )}
-
-            {supportsBrewDoseRatio(brewMethod) && (
-              <BrewDoseRatioPanel
-                values={brewDoseValues}
-                onChange={setBrewDoseValues}
-                disabled={isSaving}
-              />
-            )}
-
-            <div className="rounded-xl border border-sky-200/80 bg-sky-50/40 p-4">
-              <label className="flex flex-col gap-2 text-sm font-semibold text-amber-950">
-                使用した水（Water）
-                <span className="text-xs font-normal text-amber-900/85">
-                  すべての抽出方法で記録できます。よく使う水を選ぶか、銘柄・硬度などを自由入力してください。
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  {waterTypePresets.map((preset) => {
-                    const active = waterType === preset;
-                    return (
-                      <button
-                        key={preset}
-                        type="button"
-                        onClick={() =>
-                          setWaterType(preset === "その他（自由入力）" ? "" : preset)
-                        }
-                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                          active
-                            ? "bg-sky-800 text-white shadow-sm"
-                            : "border border-sky-300/80 bg-white text-sky-950 hover:bg-sky-100"
-                        }`}
-                      >
-                        {preset}
-                      </button>
-                    );
-                  })}
-                </div>
-                <input
-                  type="text"
-                  list="water-type-suggestions"
-                  value={waterType}
-                  onChange={(event) => setWaterType(event.target.value)}
-                  className="rounded-xl border border-sky-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-sky-400"
-                  placeholder="例: エビス軟水 / ペルエチオ / 自宅の浄水器"
-                  autoComplete="off"
-                />
-                <datalist id="water-type-suggestions">
-                  {waterTypePresets.map((preset) => (
-                    <option key={preset} value={preset} />
-                  ))}
-                </datalist>
-              </label>
-            </div>
 
             <div className="rounded-xl border border-amber-200/90 bg-white/80 p-4">
               <h2 className="text-sm font-semibold text-amber-900">
@@ -1162,31 +1211,37 @@ function BrewNewPageContent() {
             </div>
             <p className="mt-2 text-sm text-amber-900/80">
               {mode === "beginner"
-                ? "初心者モード: 味の印象を星で簡単に記録できます。"
-                : "プロモード: 基本条件と抽出方法別の詳細評価を入力できます。"}
+                ? "初心者モード: 星評価とシンプルな湯量入力。水の種類やレシオ計算はプロモードで設定できます。"
+                : "プロモード: 水の種類・湯量レシオ・器具の詳細など、こだわりの条件を記録できます。"}
             </p>
           </div>
 
           {mode === "beginner" ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5 sm:p-6">
-              {supportsDripTimer(brewMethod) && (
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-200/90 bg-white/80 px-3 py-2.5">
-                  <p className="text-xs text-amber-900/80">タイマーで抽出時間を計測できます</p>
-                  <Link
-                    href={`/brew/timer?return=${encodeURIComponent(
-                      editingId != null ? `/brew/new?edit=${editingId}` : "/brew/new"
-                    )}`}
-                    onClick={syncTimerRecipeWithDose}
-                    className="text-xs font-semibold text-amber-800 underline-offset-2 hover:underline"
-                  >
-                    タイマーを開く →
-                  </Link>
-                </div>
+              {supportsBrewDoseRatio(brewMethod) && (
+                <label className="mb-5 flex flex-col gap-2 text-sm font-semibold text-amber-900">
+                  湯量（g または ml）
+                  <span className="text-xs font-normal text-amber-900/75">
+                    お湯の総量だけ覚えておきたいときはここに入力。細かいレシオはプロモードで設定できます。
+                  </span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    value={beginnerWaterMl}
+                    onChange={(event) => setBeginnerWaterMl(event.target.value)}
+                    disabled={isSaving}
+                    className="max-w-xs rounded-xl border border-amber-200 bg-white px-3 py-2.5 tabular-nums text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-60"
+                    placeholder="例: 225"
+                  />
+                </label>
               )}
-              {supportsDripTimer(brewMethod) && totalBrewTimeSec.trim() !== "" && (
-                <p className="mb-3 text-sm text-amber-900">
-                  <span className="font-semibold">計測時間:</span> {totalBrewTimeSec} 秒
-                </p>
+              {supportsDripTimer(brewMethod) && (
+                <DripTimerLaunchSection
+                  timerHref={`/brew/timer?return=${encodeURIComponent(dripTimerReturnPath)}`}
+                  onPrepare={syncTimerRecipeWithDose}
+                  totalBrewTimeSec={totalBrewTimeSec}
+                />
               )}
               <p className="text-sm font-semibold text-amber-900">今日の一杯の評価</p>
               <p className="mt-1.5 text-xs leading-relaxed text-amber-900/75 sm:text-sm">
@@ -1228,6 +1283,37 @@ function BrewNewPageContent() {
             </div>
           ) : (
             <div className="space-y-6">
+              <div className="rounded-2xl border border-amber-300/70 bg-gradient-to-br from-amber-50/90 via-white to-sky-50/30 p-5 sm:p-6">
+                <h2 className="text-base font-semibold text-amber-950">プロ用設定</h2>
+                <p className="mt-1 text-xs leading-relaxed text-amber-900/75">
+                  使用する水・豆量と湯量のバランス（レシオ）を記録します。ドリップタイマーにも連動します。
+                </p>
+                <div className="mt-4 space-y-4">
+                  <div className="rounded-xl border border-sky-200/80 bg-sky-50/40 p-4">
+                    <WaterTypeFields
+                      waterType={waterType}
+                      onWaterTypeChange={setWaterType}
+                      disabled={isSaving}
+                    />
+                  </div>
+                  {supportsBrewDoseRatio(brewMethod) && (
+                    <BrewDoseRatioPanel
+                      values={brewDoseValues}
+                      onChange={setBrewDoseValues}
+                      disabled={isSaving}
+                    />
+                  )}
+                </div>
+              </div>
+
+              {supportsDripTimer(brewMethod) && (
+                <DripTimerLaunchSection
+                  timerHref={`/brew/timer?return=${encodeURIComponent(dripTimerReturnPath)}`}
+                  onPrepare={syncTimerRecipeWithDose}
+                  totalBrewTimeSec={totalBrewTimeSec}
+                />
+              )}
+
               <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
                 <h2 className="text-base font-semibold text-amber-900">基本条件</h2>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -1348,6 +1434,13 @@ function BrewNewPageContent() {
                         カッピングでは入力不要です。保存時に器具名が空のときは「カッピングボウル」として記録されます。別の器を使った場合は、下のメモ欄などに追記してください。
                       </p>
                     </div>
+                  )}
+                  {brewMethod === BREW_METHOD_HAND_DRIP && (
+                    <PaperFilterFields
+                      paperFilter={paperFilter}
+                      onPaperFilterChange={setPaperFilter}
+                      disabled={isSaving}
+                    />
                   )}
                   <label className="flex min-h-[2.75rem] items-center gap-3 rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-sm font-medium text-amber-900">
                     <input
