@@ -13,7 +13,13 @@ const OPTIONAL_MIGRATION_COLUMNS = [
   "bloom_time_sec",
   "coffee_maker_course",
   "steep_time_memo",
-  "grind_size"
+  "grind_size",
+  "paper_filter",
+  "water_type",
+  "total_brew_time_sec",
+  "coffee_dose_g",
+  "brew_ratio",
+  "total_water_ml"
 ] as const;
 
 function isSchemaColumnError(error: unknown): boolean {
@@ -95,6 +101,26 @@ export function brewRowToStoredLog(row: BrewRow): StoredBrewLog {
       : {}),
     ...(row.grind_size != null && String(row.grind_size).trim() !== ""
       ? { grindSize: String(row.grind_size).trim() }
+      : {}),
+    ...(row.paper_filter != null && String(row.paper_filter).trim() !== ""
+      ? { paperFilter: String(row.paper_filter).trim() }
+      : {}),
+    ...(row.water_type != null && String(row.water_type).trim() !== ""
+      ? { waterType: String(row.water_type).trim() }
+      : {}),
+    ...(typeof row.total_brew_time_sec === "number" && !Number.isNaN(row.total_brew_time_sec)
+      ? { totalBrewTimeSec: row.total_brew_time_sec }
+      : {}),
+    ...(typeof row.coffee_dose_g === "number" && !Number.isNaN(row.coffee_dose_g) && row.coffee_dose_g > 0
+      ? { coffeeDoseG: row.coffee_dose_g }
+      : {}),
+    ...(typeof row.brew_ratio === "number" && !Number.isNaN(row.brew_ratio) && row.brew_ratio > 0
+      ? { brewRatio: row.brew_ratio }
+      : {}),
+    ...(typeof row.total_water_ml === "number" &&
+    !Number.isNaN(row.total_water_ml) &&
+    row.total_water_ml > 0
+      ? { totalWaterMl: row.total_water_ml }
       : {})
   };
 }
@@ -135,7 +161,25 @@ function storedLogToInsert(log: StoredBrewLog, userId: string): BrewInsert {
         : null,
     coffee_maker_course: normalized.coffeeMakerCourse ?? null,
     steep_time_memo: normalized.steepTimeMemo ?? null,
-    grind_size: normalized.grindSize ?? null
+    grind_size: normalized.grindSize ?? null,
+    paper_filter: normalized.paperFilter ?? null,
+    water_type: normalized.waterType ?? null,
+    total_brew_time_sec:
+      typeof normalized.totalBrewTimeSec === "number" && Number.isFinite(normalized.totalBrewTimeSec)
+        ? normalized.totalBrewTimeSec
+        : null,
+    coffee_dose_g:
+      typeof normalized.coffeeDoseG === "number" && Number.isFinite(normalized.coffeeDoseG)
+        ? normalized.coffeeDoseG
+        : null,
+    brew_ratio:
+      typeof normalized.brewRatio === "number" && Number.isFinite(normalized.brewRatio)
+        ? normalized.brewRatio
+        : null,
+    total_water_ml:
+      typeof normalized.totalWaterMl === "number" && Number.isFinite(normalized.totalWaterMl)
+        ? normalized.totalWaterMl
+        : null
   };
 }
 
@@ -253,6 +297,24 @@ export async function updateBrewLog(
     coffee_maker_course: normalized.coffeeMakerCourse ?? null,
     steep_time_memo: normalized.steepTimeMemo ?? null,
     grind_size: normalized.grindSize ?? null,
+    paper_filter: normalized.paperFilter ?? null,
+    water_type: normalized.waterType ?? null,
+    total_brew_time_sec:
+      typeof normalized.totalBrewTimeSec === "number" && Number.isFinite(normalized.totalBrewTimeSec)
+        ? normalized.totalBrewTimeSec
+        : null,
+    coffee_dose_g:
+      typeof normalized.coffeeDoseG === "number" && Number.isFinite(normalized.coffeeDoseG)
+        ? normalized.coffeeDoseG
+        : null,
+    brew_ratio:
+      typeof normalized.brewRatio === "number" && Number.isFinite(normalized.brewRatio)
+        ? normalized.brewRatio
+        : null,
+    total_water_ml:
+      typeof normalized.totalWaterMl === "number" && Number.isFinite(normalized.totalWaterMl)
+        ? normalized.totalWaterMl
+        : null,
     updated_at: new Date().toISOString()
   };
 

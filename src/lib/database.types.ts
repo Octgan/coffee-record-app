@@ -27,6 +27,14 @@ export type BrewLogRow = {
   /** カッピング等: 注湯からブレイクまでの時間など（自由記述） */
   steep_time_memo: string | null;
   grind_size: string | null;
+  /** ハンドドリップ時のペーパーフィルター（形状・素材など）。他方法は null */
+  paper_filter: string | null;
+  /** 使用した水（水道水・軟水など）。未記録は null */
+  water_type: string | null;
+  total_brew_time_sec: number | null;
+  coffee_dose_g: number | null;
+  brew_ratio: number | null;
+  total_water_ml: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -84,6 +92,12 @@ export type Database = {
           coffee_maker_course?: string | null;
           steep_time_memo?: string | null;
           grind_size?: string | null;
+          paper_filter?: string | null;
+          water_type?: string | null;
+          total_brew_time_sec?: number | null;
+          coffee_dose_g?: number | null;
+          brew_ratio?: number | null;
+          total_water_ml?: number | null;
         };
         Update: Partial<Omit<BrewLogRow, "id" | "user_id">>;
         Relationships: [];

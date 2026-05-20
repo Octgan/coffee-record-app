@@ -2,13 +2,19 @@
 
 import dynamic from "next/dynamic";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import CafeMapDetailCard from "@/components/CafeMapDetailCard";
+import CafeMapSpotPanel from "@/components/CafeMapSpotPanel";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compressImageFileForUpload } from "@/lib/compressImageForUpload";
 import {
   DEFAULT_CAFE_PHOTO_URL,
   type CafeRecord
 } from "@/lib/cafeMapStorage";
+import {
+  type CafeSpot,
+  findSpotByKey,
+  getCafeSpotKey,
+  groupRecordsIntoSpots
+} from "@/lib/cafeSpotUtils";
 import { fetchCafeRecords, syncCafeRecordsForUser, CAFE_RECORDS_UPDATED_EVENT } from "@/lib/data/cafeRecordsDb";
 import { createClient } from "@/lib/supabase/client";
 const CafeMapCanvas = dynamic(() => import("@/components/CafeMapCanvas"), {
@@ -49,14 +55,13 @@ export default function CafeMapPage() {
   const [userPosition, setUserPosition] = useState<[number, number] | null>(null);
   const [mapCenter, setMapCenter] = useState<[number, number]>(defaultCenter);
   const [isLocating, setIsLocating] = useState(false);
-  /** ピン選択時のみ下部固定エリアに詳細カードを表示 */
-  const [selectedCafeId, setSelectedCafeId] = useState<number | null>(null);
+  /** ピン選択時のみ下部固定エリアにスポット詳細を表示 */
+  const [selectedSpotKey, setSelectedSpotKey] = useState<string | null>(null);
   const reduceMotion = useReducedMotion() ?? false;
   const [candidateName, setCandidateName] = useState("");
   const [candidatePlace, setCandidatePlace] = useState("");
   /** 保存するスポットの座標（現在地取得 or 地図タップで決まる。名前とは独立） */
   const [registrationCoords, setRegistrationCoords] = useState<[number, number] | null>(null);
-  const [pairing, setPairing] = useState("");
   const [editingDraft, setEditingDraft] = useState<CafeRecord | null>(null);
   /** true のときモーダルは新規ピン追加。false のとき既存レコードの編集 */
   const [editingIsNew, setEditingIsNew] = useState(false);
@@ -138,33 +143,40 @@ export default function CafeMapPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const supabase = createClient();
-        setRecords(await fetchCafeRecords(supabase));
-      } catch {
-        setRecords([]);
-      }
-    })();
+  const loadRecords = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      setRecords(await fetchCafeRecords(supabase));
+    } catch {
+      setRecords([]);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadRecords();
+    const onUpdated = () => void loadRecords();
+    window.addEventListener(CAFE_RECORDS_UPDATED_EVENT, onUpdated);
+    return () => window.removeEventListener(CAFE_RECORDS_UPDATED_EVENT, onUpdated);
+  }, [loadRecords]);
 
   useEffect(() => {
     setCafePhotoUploadError(null);
   }, [editingDraft?.id]);
 
-  const selectedCafeRecord = useMemo(() => {
-    if (selectedCafeId == null) {
+  const spots = useMemo(() => groupRecordsIntoSpots(records), [records]);
+
+  const selectedSpot = useMemo(() => {
+    if (selectedSpotKey == null) {
       return null;
     }
-    return records.find((r) => r.id === selectedCafeId) ?? null;
-  }, [records, selectedCafeId]);
+    return findSpotByKey(spots, selectedSpotKey);
+  }, [spots, selectedSpotKey]);
 
   useEffect(() => {
-    if (selectedCafeId != null && !records.some((r) => r.id === selectedCafeId)) {
-      setSelectedCafeId(null);
+    if (selectedSpotKey != null && !spots.some((s) => s.spotKey === selectedSpotKey)) {
+      setSelectedSpotKey(null);
     }
-  }, [records, selectedCafeId]);
+  }, [spots, selectedSpotKey]);
 
   const openNewRecordModal = useCallback(async () => {
     let lat: number;
@@ -238,10 +250,35 @@ export default function CafeMapPage() {
       rating: 4,
       bean: "",
       note: "",
-      foodPairing: pairing.trim() ? pairing.trim().slice(0, 120) : undefined,
+      foodPairing: undefined,
       photoUrl: DEFAULT_CAFE_PHOTO_URL
     });
-  }, [registrationCoords, candidateName, candidatePlace, pairing, records]);
+  }, [registrationCoords, candidateName, candidatePlace, records]);
+
+  const openNewVisitAtSpot = useCallback(
+    (spot: CafeSpot) => {
+      const ref = spot.visits[0];
+      if (!ref) {
+        return;
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      const nextId = Math.max(0, ...records.map((r) => r.id)) + 1;
+      setEditingIsNew(true);
+      setEditingDraft({
+        id: nextId,
+        cafeName: ref.cafeName.slice(0, 400),
+        lat: ref.lat,
+        lng: ref.lng,
+        date: today,
+        rating: 4,
+        bean: "",
+        note: "",
+        foodPairing: undefined,
+        photoUrl: DEFAULT_CAFE_PHOTO_URL
+      });
+    },
+    [records]
+  );
 
   const openCafeRecordEdit = useCallback((record: CafeRecord) => {
     setEditingIsNew(false);
@@ -250,7 +287,7 @@ export default function CafeMapPage() {
 
   const handleMapSelectSpot = useCallback(async (lat: number, lng: number) => {
     const pos: [number, number] = [lat, lng];
-    setSelectedCafeId(null);
+    setSelectedSpotKey(null);
     setRegistrationCoords(pos);
     const hint = await reverseGeocodeSuggestion(lat, lng);
     setCandidateName(hint.nameSuggestion ? `マイスポット（${hint.nameSuggestion}）` : "");
@@ -268,6 +305,12 @@ export default function CafeMapPage() {
       setRecords((prev) => {
         const next = prev.filter((item) => item.id !== record.id);
         void persistRemote(next);
+        setSelectedSpotKey((key) => {
+          if (key == null) {
+            return null;
+          }
+          return groupRecordsIntoSpots(next).some((s) => s.spotKey === key) ? key : null;
+        });
         return next;
       });
       let closedEditing = false;
@@ -281,7 +324,6 @@ export default function CafeMapPage() {
       if (closedEditing) {
         setEditingIsNew(false);
       }
-      setSelectedCafeId((id) => (id === record.id ? null : id));
     },
     [persistRemote]
   );
@@ -294,6 +336,7 @@ export default function CafeMapPage() {
       const next = [editingDraft, ...records];
       setRecords(next);
       void persistRemote(next);
+      setSelectedSpotKey(getCafeSpotKey(editingDraft));
     } else {
       const updated = records.map((record) =>
         record.id === editingDraft.id ? editingDraft : record
@@ -320,7 +363,7 @@ export default function CafeMapPage() {
               Coffee Spot Explorer
             </h1>
             <p className="mt-2 text-sm text-amber-900/80">
-              地図のピンをタップして記録を確認。地図をタップして位置を決め、「＋」で新規記録を追加できます。
+              地図のピンをタップして訪問履歴を確認。同じカフェには「新しい記録を追加」で何度でも記録できます（5回でシルバー、10回でゴールド常連）。
             </p>
           </div>
           <button
@@ -337,12 +380,12 @@ export default function CafeMapPage() {
           <div className="relative min-h-0 flex-1">
             <CafeMapCanvas
               className="absolute inset-0 h-full w-full"
-              records={records}
+              spots={spots}
               mapCenter={mapCenter}
               userPosition={userPosition}
               registrationCoords={registrationCoords}
               onMapClick={handleMapSelectSpot}
-              onCafeMarkerClick={(record) => setSelectedCafeId(record.id)}
+              onCafeMarkerClick={setSelectedSpotKey}
             />
           </div>
 
@@ -352,13 +395,14 @@ export default function CafeMapPage() {
             transition={{ type: "spring", stiffness: 400, damping: 36 }}
           >
             <AnimatePresence mode="wait">
-              {selectedCafeRecord ? (
-                <CafeMapDetailCard
-                  key={selectedCafeRecord.id}
-                  record={selectedCafeRecord}
+              {selectedSpot ? (
+                <CafeMapSpotPanel
+                  key={selectedSpot.spotKey}
+                  spot={selectedSpot}
+                  onAddVisit={openNewVisitAtSpot}
                   onEdit={openCafeRecordEdit}
                   onDelete={handleDeleteRecord}
-                  onClose={() => setSelectedCafeId(null)}
+                  onClose={() => setSelectedSpotKey(null)}
                 />
               ) : (
                 <motion.p
@@ -399,7 +443,7 @@ export default function CafeMapPage() {
             </div>
             <p className="mt-1 text-xs text-amber-800">
               {editingIsNew
-                ? "座標はこの画面を開いたときの位置です。変えたい場合は閉じて地図で位置を選び直してから、もう一度「＋ ここで記録する」を押してください。"
+                ? "店名・位置は引き継がれています。訪問日やメモなど、この回の内容を入力して保存してください。"
                 : "位置の変更は、マップで新しく「＋ ここで記録する」から記録し直すか、いったん削除してからやり直してください。"}
             </p>
 

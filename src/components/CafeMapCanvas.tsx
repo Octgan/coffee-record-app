@@ -12,7 +12,7 @@ import {
   useMapEvents
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
-import type { CafeRecord } from "@/lib/cafeMapStorage";
+import type { CafeSpot, VisitRank } from "@/lib/cafeSpotUtils";
 
 function MapViewSync({ center, zoom }: { center: [number, number]; zoom: number }) {
   const map = useMap();
@@ -35,19 +35,30 @@ function MapClickLayer({
   return null;
 }
 
+function buildCafePinHtml(visitCount: number, rank: VisitRank): string {
+  const rankClass =
+    rank === "gold" ? "cafe-pin-gold" : rank === "silver" ? "cafe-pin-silver" : "";
+  const rankEmoji = rank === "gold" ? "🥇" : rank === "silver" ? "🥈" : "☕";
+  const countBadge =
+    visitCount > 1
+      ? `<span class="cafe-pin-count" aria-hidden="true">${visitCount}</span>`
+      : "";
+  return `<div class="cafe-pin-icon fade-in-pin ${rankClass}"><span class="cafe-pin-emoji">${rankEmoji}</span>${countBadge}</div>`;
+}
+
 type CafeMapCanvasProps = {
-  records: CafeRecord[];
+  spots: CafeSpot[];
   mapCenter: [number, number];
   mapZoom?: number;
   userPosition: [number, number] | null;
   registrationCoords: [number, number] | null;
   onMapClick: (lat: number, lng: number) => void;
-  onCafeMarkerClick: (record: CafeRecord) => void;
+  onCafeMarkerClick: (spotKey: string) => void;
   className?: string;
 };
 
 export default function CafeMapCanvas({
-  records,
+  spots,
   mapCenter,
   mapZoom = 13,
   userPosition,
@@ -57,7 +68,7 @@ export default function CafeMapCanvas({
   className = "h-full min-h-[min(52vh,480px)] w-full"
 }: CafeMapCanvasProps) {
   const [isMounted, setIsMounted] = useState(false);
-  const [coffeeIcon, setCoffeeIcon] = useState<DivIcon | null>(null);
+  const [pinIcons, setPinIcons] = useState<Map<string, DivIcon>>(new Map());
   const [userIcon, setUserIcon] = useState<DivIcon | null>(null);
   const [registrationIcon, setRegistrationIcon] = useState<DivIcon | null>(null);
 
@@ -75,12 +86,20 @@ export default function CafeMapCanvas({
       if (!active) {
         return;
       }
-      const cup = leaflet.divIcon({
-        className: "",
-        html: `<div class="cafe-pin-icon fade-in-pin">☕</div>`,
-        iconSize: [36, 36],
-        iconAnchor: [18, 18]
-      });
+
+      const nextPins = new Map<string, DivIcon>();
+      for (const spot of spots) {
+        nextPins.set(
+          spot.spotKey,
+          leaflet.divIcon({
+            className: "",
+            html: buildCafePinHtml(spot.visitCount, spot.rank),
+            iconSize: [40, 40],
+            iconAnchor: [20, 20]
+          })
+        );
+      }
+
       const me = leaflet.divIcon({
         className: "",
         html: `<div class="user-location-pin"><span class="user-location-ripple"></span><span class="user-location-dot"></span></div>`,
@@ -93,7 +112,8 @@ export default function CafeMapCanvas({
         iconSize: [40, 40],
         iconAnchor: [20, 36]
       });
-      setCoffeeIcon(cup);
+
+      setPinIcons(nextPins);
       setUserIcon(me);
       setRegistrationIcon(reg);
     });
@@ -101,7 +121,7 @@ export default function CafeMapCanvas({
     return () => {
       active = false;
     };
-  }, [isMounted]);
+  }, [isMounted, spots]);
 
   if (!isMounted) {
     return <div className={`${className} bg-amber-100/50`} />;
@@ -124,19 +144,24 @@ export default function CafeMapCanvas({
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
 
-        {coffeeIcon &&
-          records.map((record) => (
+        {spots.map((spot) => {
+          const icon = pinIcons.get(spot.spotKey);
+          if (!icon) {
+            return null;
+          }
+          return (
             <Marker
-              key={record.id}
-              position={[record.lat, record.lng]}
-              icon={coffeeIcon}
+              key={spot.spotKey}
+              position={[spot.lat, spot.lng]}
+              icon={icon}
               eventHandlers={{
                 click: () => {
-                  onCafeMarkerClick(record);
+                  onCafeMarkerClick(spot.spotKey);
                 }
               }}
             />
-          ))}
+          );
+        })}
 
         {registrationCoords && registrationIcon && (
           <Marker position={registrationCoords} icon={registrationIcon} zIndexOffset={600}>
@@ -172,19 +197,57 @@ export default function CafeMapCanvas({
         }
 
         .cafe-pin-icon {
-          width: 38px;
-          height: 38px;
+          position: relative;
+          width: 40px;
+          height: 40px;
           border-radius: 9999px;
-          background: #8f2f1e;
+          background: linear-gradient(145deg, #8f2f1e, #6b2318);
           border: 2px solid rgba(255, 255, 255, 0.95);
           color: #fff;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 16px;
           box-shadow:
             0 14px 24px rgba(61, 22, 12, 0.5),
             0 4px 10px rgba(61, 22, 12, 0.35);
+        }
+
+        .cafe-pin-icon.cafe-pin-silver {
+          background: linear-gradient(145deg, #94a3b8, #64748b);
+          border-color: rgba(255, 255, 255, 0.98);
+          box-shadow:
+            0 14px 24px rgba(51, 65, 85, 0.45),
+            0 0 0 2px rgba(226, 232, 240, 0.5);
+        }
+
+        .cafe-pin-icon.cafe-pin-gold {
+          background: linear-gradient(145deg, #fbbf24, #d97706);
+          border-color: rgba(255, 251, 235, 0.98);
+          box-shadow:
+            0 14px 26px rgba(180, 83, 9, 0.5),
+            0 0 0 2px rgba(253, 230, 138, 0.55);
+        }
+
+        .cafe-pin-emoji {
+          font-size: 17px;
+          line-height: 1;
+        }
+
+        .cafe-pin-count {
+          position: absolute;
+          top: -4px;
+          right: -4px;
+          min-width: 18px;
+          height: 18px;
+          padding: 0 4px;
+          border-radius: 9999px;
+          background: #fff;
+          color: #78350f;
+          font-size: 10px;
+          font-weight: 700;
+          line-height: 18px;
+          text-align: center;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
         }
 
         .user-location-pin {

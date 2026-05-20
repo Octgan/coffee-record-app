@@ -1,3 +1,5 @@
+import { supportsBrewDoseRatio } from "@/lib/brewDoseRatio";
+
 export const BREW_LOG_STORAGE_KEY = "coffee-brew-logs";
 
 /** 同一タブ内でもリストを再同期するためのカスタムイベント（storage イベントは別タブのみ発火） */
@@ -39,8 +41,21 @@ export type StoredBrewLog = {
   steepTimeMemo?: string | null;
   /** 挽き目（プロモードの選択値） */
   grindSize?: string | null;
+  /** ハンドドリップ時のペーパーフィルター（形状・素材など） */
+  paperFilter?: string | null;
+  /** 使用した水（水道水・軟水など。全抽出方法共通） */
+  waterType?: string | null;
+  /** ドリップタイマー等で計測したトータル抽出時間（秒） */
+  totalBrewTimeSec?: number;
+  /** コーヒー豆の量（g）。ハンドドリップ等 */
+  coffeeDoseG?: number;
+  /** 抽出比率（1:N の N。例: 15 → 1:15） */
+  brewRatio?: number;
+  /** 総湯量（ml） */
+  totalWaterMl?: number;
 };
 
+export const BREW_METHOD_HAND_DRIP = "ハンドドリップ";
 export const COFFEE_BREW_METHOD_MAKER = "コーヒーメーカー";
 export const BREW_METHOD_CUPPING = "カッピング";
 
@@ -68,6 +83,27 @@ function finiteSmallInt(value: unknown): number | null {
   return Math.round(Math.min(32767, Math.max(-32768, value)));
 }
 
+function finitePositiveDoseG(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  return Math.round(value * 10) / 10;
+}
+
+function finitePositiveBrewRatio(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  return Math.round(value * 10) / 10;
+}
+
+function finitePositiveWaterMl(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  return Math.round(value);
+}
+
 /**
  * Supabase 保存前に必須項目・抽出方法別のデフォルトを揃える。
  * カッピングで非表示の蒸らし時間なども DB 制約を満たす値にする。
@@ -76,6 +112,7 @@ export function normalizeBrewLogForDatabase(log: StoredBrewLog): StoredBrewLog {
   const method = String(log.method ?? "ハンドドリップ").trim() || "ハンドドリップ";
   const isCoffeeMaker = method === COFFEE_BREW_METHOD_MAKER;
   const isCupping = method === BREW_METHOD_CUPPING;
+  const isHandDrip = method === BREW_METHOD_HAND_DRIP;
 
   const origins =
     log.origins && log.origins.length > 0
@@ -103,7 +140,7 @@ export function normalizeBrewLogForDatabase(log: StoredBrewLog): StoredBrewLog {
     log.steepTimeMemo != null && String(log.steepTimeMemo).trim() !== ""
       ? String(log.steepTimeMemo).trim()
       : null;
-  let grindSize =
+  const grindSize =
     log.grindSize != null && String(log.grindSize).trim() !== ""
       ? String(log.grindSize).trim()
       : null;
@@ -123,11 +160,32 @@ export function normalizeBrewLogForDatabase(log: StoredBrewLog): StoredBrewLog {
     steepTimeMemo = null;
   }
 
+  const paperFilter =
+    isHandDrip && log.paperFilter != null && String(log.paperFilter).trim() !== ""
+      ? String(log.paperFilter).trim()
+      : null;
+  const waterType =
+    log.waterType != null && String(log.waterType).trim() !== ""
+      ? String(log.waterType).trim()
+      : null;
+  const totalBrewTimeSec = finiteSmallInt(log.totalBrewTimeSec);
+  const doseEnabled = supportsBrewDoseRatio(method);
+  const coffeeDoseG = doseEnabled ? finitePositiveDoseG(log.coffeeDoseG) : null;
+  const brewRatio = doseEnabled ? finitePositiveBrewRatio(log.brewRatio) : null;
+  const totalWaterMl = doseEnabled ? finitePositiveWaterMl(log.totalWaterMl) : null;
+
   const cafeLat = Number(log.cafeLat);
   const cafeLng = Number(log.cafeLng);
+  const logBase = { ...log };
+  delete logBase.paperFilter;
+  delete logBase.waterType;
+  delete logBase.totalBrewTimeSec;
+  delete logBase.coffeeDoseG;
+  delete logBase.brewRatio;
+  delete logBase.totalWaterMl;
 
   return {
-    ...log,
+    ...logBase,
     date: normalizeBrewDate(log.date),
     beanName: log.beanName?.trim() || "未入力",
     origins: origins && origins.length > 0 ? origins : undefined,
@@ -149,7 +207,13 @@ export function normalizeBrewLogForDatabase(log: StoredBrewLog): StoredBrewLog {
     ...(bloomTimeSec !== null ? { bloomTimeSec } : {}),
     ...(coffeeMakerCourse !== null ? { coffeeMakerCourse } : {}),
     ...(steepTimeMemo !== null ? { steepTimeMemo } : {}),
-    ...(grindSize !== null ? { grindSize } : {})
+    ...(grindSize !== null ? { grindSize } : {}),
+    ...(paperFilter !== null ? { paperFilter } : {}),
+    ...(waterType !== null ? { waterType } : {}),
+    ...(totalBrewTimeSec !== null ? { totalBrewTimeSec } : {}),
+    ...(coffeeDoseG !== null ? { coffeeDoseG } : {}),
+    ...(brewRatio !== null ? { brewRatio } : {}),
+    ...(totalWaterMl !== null ? { totalWaterMl } : {})
   };
 }
 
@@ -238,6 +302,18 @@ export function coerceStoredBrewLog(raw: unknown): StoredBrewLog | null {
     typeof raw.grindSize === "string" && raw.grindSize.trim() !== ""
       ? raw.grindSize.trim()
       : undefined;
+  const paperFilter =
+    typeof raw.paperFilter === "string" && raw.paperFilter.trim() !== ""
+      ? raw.paperFilter.trim()
+      : undefined;
+  const waterType =
+    typeof raw.waterType === "string" && raw.waterType.trim() !== ""
+      ? raw.waterType.trim()
+      : undefined;
+  const totalBrewRaw = Number(raw.totalBrewTimeSec);
+  const coffeeDoseRaw = Number(raw.coffeeDoseG);
+  const brewRatioRaw = Number(raw.brewRatio);
+  const totalWaterRaw = Number(raw.totalWaterMl);
 
   return {
     id: raw.id,
@@ -266,7 +342,21 @@ export function coerceStoredBrewLog(raw: unknown): StoredBrewLog | null {
       : {}),
     ...(coffeeMakerCourse ? { coffeeMakerCourse } : {}),
     ...(steepTimeMemo ? { steepTimeMemo } : {}),
-    ...(grindSize ? { grindSize } : {})
+    ...(grindSize ? { grindSize } : {}),
+    ...(paperFilter ? { paperFilter } : {}),
+    ...(waterType ? { waterType } : {}),
+    ...(Number.isFinite(totalBrewRaw) && !Number.isNaN(totalBrewRaw)
+      ? { totalBrewTimeSec: Math.round(totalBrewRaw) }
+      : {}),
+    ...(Number.isFinite(coffeeDoseRaw) && coffeeDoseRaw > 0
+      ? { coffeeDoseG: Math.round(coffeeDoseRaw * 10) / 10 }
+      : {}),
+    ...(Number.isFinite(brewRatioRaw) && brewRatioRaw > 0
+      ? { brewRatio: Math.round(brewRatioRaw * 10) / 10 }
+      : {}),
+    ...(Number.isFinite(totalWaterRaw) && totalWaterRaw > 0
+      ? { totalWaterMl: Math.round(totalWaterRaw) }
+      : {})
   };
 }
 

@@ -7,6 +7,7 @@ import { COFFEE_ORIGINS } from "@/lib/coffeeOrigins";
 import {
   BREW_LOG_JOURNAL_PAGE_SIZE,
   BREW_LOGS_UPDATED_EVENT,
+  BREW_METHOD_HAND_DRIP,
   logMatchesCountryKey,
   normalizeMapCountryName,
   sliceLogsPage,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/brewLogStorage";
 import { deleteBrewLog, fetchBrewLogs } from "@/lib/data/brewLogsDb";
 import { createClient } from "@/lib/supabase/client";
+import { formatBrewRatioLabel, supportsBrewDoseRatio } from "@/lib/brewDoseRatio";
 import { journalShell } from "./shell";
 
 type JournalSortKey = "dateDesc" | "dateAsc" | "ratingDesc" | "ratingAsc";
@@ -60,7 +62,16 @@ function logMatchesJournalSearch(log: StoredBrewLog, rawQuery: string): boolean 
   if (!normalized) {
     return true;
   }
-  const haystack = [log.beanName, log.roastery, log.equipmentName ?? "", log.memo]
+  const haystack = [
+    log.beanName,
+    log.roastery,
+    log.equipmentName ?? "",
+    log.paperFilter ?? "",
+    log.waterType ?? "",
+    log.coffeeDoseG != null ? String(log.coffeeDoseG) : "",
+    log.totalWaterMl != null ? String(log.totalWaterMl) : "",
+    log.memo
+  ]
     .join(" ")
     .toLowerCase();
   const tokens = normalized.split(/\s+/).filter(Boolean);
@@ -194,6 +205,49 @@ function LogEntryArticle({ log, onDelete, deleteDisabled }: LogEntryArticleProps
             <span className="inline-flex items-center gap-1.5">
               <span>{pairingIcon(log.foodPairing)}</span>
               {log.foodPairing}
+            </span>
+          </p>
+        )}
+        {log.method === BREW_METHOD_HAND_DRIP && log.paperFilter && (
+          <p>
+            <span className="font-semibold text-amber-900">ペーパーフィルター</span>
+            <span className="mx-2 text-amber-800/50">·</span>
+            {log.paperFilter}
+          </p>
+        )}
+        {log.waterType && (
+          <p>
+            <span className="font-semibold text-amber-900">使用した水</span>
+            <span className="mx-2 text-amber-800/50">·</span>
+            {log.waterType}
+          </p>
+        )}
+        {supportsBrewDoseRatio(log.method) &&
+          log.coffeeDoseG != null &&
+          log.coffeeDoseG > 0 &&
+          log.totalWaterMl != null &&
+          log.totalWaterMl > 0 && (
+            <p>
+              <span className="font-semibold text-amber-900">豆量・レシオ・湯量</span>
+              <span className="mx-2 text-amber-800/50">·</span>
+              <span className="tabular-nums">
+                {log.coffeeDoseG}g
+                {log.brewRatio != null && log.brewRatio > 0
+                  ? ` · ${formatBrewRatioLabel(log.brewRatio)}`
+                  : ""}
+                {" · "}
+                {log.totalWaterMl}ml
+              </span>
+            </p>
+          )}
+        {log.totalBrewTimeSec != null && log.totalBrewTimeSec > 0 && (
+          <p>
+            <span className="font-semibold text-amber-900">トータル抽出時間</span>
+            <span className="mx-2 text-amber-800/50">·</span>
+            <span className="tabular-nums">
+              {Math.floor(log.totalBrewTimeSec / 60)}:
+              {String(log.totalBrewTimeSec % 60).padStart(2, "0")}
+              <span className="text-amber-800/70">（{log.totalBrewTimeSec}秒）</span>
             </span>
           </p>
         )}
