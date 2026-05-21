@@ -16,6 +16,7 @@ import {
 import { deleteBrewLog, fetchBrewLogs } from "@/lib/data/brewLogsDb";
 import { createClient } from "@/lib/supabase/client";
 import { formatBrewRatioLabel, supportsBrewDoseRatio } from "@/lib/brewDoseRatio";
+import { formatTdsDisplay } from "@/lib/brewLogStorage";
 import { journalShell } from "./shell";
 
 type JournalSortKey = "dateDesc" | "dateAsc" | "ratingDesc" | "ratingAsc";
@@ -70,6 +71,7 @@ function logMatchesJournalSearch(log: StoredBrewLog, rawQuery: string): boolean 
     log.waterType ?? "",
     log.coffeeDoseG != null ? String(log.coffeeDoseG) : "",
     log.totalWaterMl != null ? String(log.totalWaterMl) : "",
+    log.tds != null ? String(log.tds) : "",
     log.memo
   ]
     .join(" ")
@@ -220,6 +222,13 @@ function LogEntryArticle({ log, onDelete, deleteDisabled }: LogEntryArticleProps
             <span className="font-semibold text-amber-900">使用した水</span>
             <span className="mx-2 text-amber-800/50">·</span>
             {log.waterType}
+          </p>
+        )}
+        {log.tds != null && Number.isFinite(log.tds) && (
+          <p>
+            <span className="font-semibold text-amber-900">濃度</span>
+            <span className="mx-2 text-amber-800/50">·</span>
+            <span className="tabular-nums">{formatTdsDisplay(log.tds)}</span>
           </p>
         )}
         {supportsBrewDoseRatio(log.method) &&
@@ -521,13 +530,13 @@ export function JournalClient() {
               placeholder="豆名・店名・メモで検索…"
               autoComplete="off"
               aria-label="キーワードで検索（豆名・店名・メモ）"
-              className="min-h-12 w-full flex-1 rounded-xl border border-amber-700/40 bg-stone-900/60 px-4 py-3 text-sm text-amber-50 placeholder:text-amber-200/40 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-400/50 sm:min-w-0"
+              className="min-h-12 w-full flex-1 rounded-xl border border-amber-700/40 bg-stone-900/60 px-4 py-3 text-base text-amber-50 placeholder:text-amber-200/40 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-400/50 sm:min-w-0"
             />
             <select
               value={sortKey}
               onChange={(e) => setSortKey(e.target.value as JournalSortKey)}
               aria-label="並び替え"
-              className="min-h-12 w-full cursor-pointer rounded-xl border border-amber-700/40 bg-stone-900/60 px-4 py-3 text-sm font-medium text-amber-50 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-400/50 sm:w-52 sm:flex-none sm:shrink-0"
+              className="min-h-12 w-full cursor-pointer rounded-xl border border-amber-700/40 bg-stone-900/60 px-4 py-3 text-base font-medium text-amber-50 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-400/50 sm:w-52 sm:flex-none sm:shrink-0"
             >
               {JOURNAL_SORT_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value} className="bg-stone-900 text-amber-50">

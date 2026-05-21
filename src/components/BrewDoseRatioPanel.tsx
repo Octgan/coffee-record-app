@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef } from "react";
+import NumericFieldInput from "@/components/NumericFieldInput";
 import {
   formatBrewRatioLabel,
   RATIO_PRESETS,
@@ -19,12 +20,18 @@ type BrewDoseRatioPanelProps = {
   values: BrewDoseRatioValues;
   onChange: (values: BrewDoseRatioValues) => void;
   disabled?: boolean;
+  /** アコーディオン内：外枠・見出しを省略 */
+  embedded?: boolean;
 };
+
+const fieldClassName =
+  "rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base tabular-nums text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-60";
 
 export default function BrewDoseRatioPanel({
   values,
   onChange,
-  disabled = false
+  disabled = false,
+  embedded = false
 }: BrewDoseRatioPanelProps) {
   const lastDriver = useRef<DoseDriver>("bean");
 
@@ -32,7 +39,7 @@ export default function BrewDoseRatioPanel({
     (next: BrewDoseRatioValues, driver: DoseDriver) => {
       lastDriver.current = driver;
       const bean = next.coffeeDoseG;
-      const ratio = next.brewRatio;
+      const ratio = next.brewRatio > 0 ? next.brewRatio : 15;
       const water = next.totalWaterMl;
 
       if (driver === "bean" || driver === "ratio") {
@@ -65,19 +72,19 @@ export default function BrewDoseRatioPanel({
         }
       }
 
-      onChange(next);
+      onChange({
+        coffeeDoseG: bean,
+        brewRatio: ratio,
+        totalWaterMl: water
+      });
     },
     [onChange]
   );
 
-  const setBean = (raw: string) => {
-    const n = Number(raw.replace(",", "."));
-    if (!Number.isFinite(n) || n <= 0) {
-      return;
-    }
+  const setBean = (coffeeDoseG: number) => {
     sync(
       {
-        coffeeDoseG: roundDoseG(n),
+        coffeeDoseG: coffeeDoseG > 0 ? roundDoseG(coffeeDoseG) : 0,
         brewRatio: values.brewRatio,
         totalWaterMl: values.totalWaterMl
       },
@@ -97,72 +104,70 @@ export default function BrewDoseRatioPanel({
     );
   };
 
-  const setWater = (raw: string) => {
-    const n = Number(raw.replace(",", "."));
-    if (!Number.isFinite(n) || n < 0) {
-      return;
-    }
+  const setWater = (totalWaterMl: number) => {
     sync(
       {
         coffeeDoseG: values.coffeeDoseG,
         brewRatio: values.brewRatio,
-        totalWaterMl: roundWaterMl(n)
+        totalWaterMl: totalWaterMl > 0 ? roundWaterMl(totalWaterMl) : 0
       },
       "water"
     );
   };
 
-  return (
-    <section className="rounded-2xl border border-amber-300/70 bg-gradient-to-br from-amber-50/95 via-white to-amber-50/40 p-4 shadow-sm sm:p-5">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h2 className="text-base font-bold text-amber-950">スマート湯量 &amp; レシオ</h2>
-          <p className="mt-1 text-xs leading-relaxed text-amber-900/75">
-            豆量・比率・湯量が連動します。ここで決めた湯量はドリップタイマーの各投にも反映されます。
-          </p>
-        </div>
-        <span className="rounded-full bg-amber-800 px-3 py-1 text-sm font-bold tabular-nums text-white shadow-sm">
-          {formatBrewRatioLabel(values.brewRatio)}
-        </span>
-      </div>
+  const ratioLabel =
+    values.brewRatio > 0 ? formatBrewRatioLabel(values.brewRatio) : "1:15";
+  const hasSummary =
+    values.coffeeDoseG > 0 && values.brewRatio > 0 && values.totalWaterMl > 0;
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-3">
+  const header = embedded ? null : (
+    <div className="flex flex-wrap items-start justify-between gap-2">
+      <div>
+        <h2 className="text-base font-bold text-amber-950">スマート湯量 &amp; レシオ</h2>
+        <p className="mt-1 text-xs leading-relaxed text-amber-900/75">
+          豆量・比率・湯量が連動します。ここで決めた湯量はドリップタイマーの各投にも反映されます。
+        </p>
+      </div>
+      <span className="rounded-full bg-amber-800 px-3 py-1 text-sm font-bold tabular-nums text-white shadow-sm">
+        {ratioLabel}
+      </span>
+    </div>
+  );
+
+  const body = (
+    <>
+      {header}
+
+      <div className={`grid gap-4 sm:grid-cols-3 ${embedded ? "mt-0" : "mt-4"}`}>
         <label className="flex flex-col gap-1.5 text-sm font-semibold text-amber-900">
           コーヒー豆の量 (g)
-          <input
-            type="number"
-            inputMode="decimal"
-            min={0}
-            step={0.1}
+          <NumericFieldInput
+            value={values.coffeeDoseG}
+            onChange={setBean}
             disabled={disabled}
-            value={values.coffeeDoseG > 0 ? values.coffeeDoseG : ""}
-            onChange={(e) => setBean(e.target.value)}
-            className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 tabular-nums text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-60"
+            allowDecimal
             placeholder="15"
+            className={fieldClassName}
           />
         </label>
 
         <div className="flex flex-col gap-1.5 text-sm font-semibold text-amber-900">
           <span>抽出の比率</span>
           <div className="flex items-baseline gap-1 rounded-xl border border-amber-200 bg-white px-3 py-2.5">
-            <span className="text-lg font-bold tabular-nums text-amber-950">
-              {formatBrewRatioLabel(values.brewRatio)}
-            </span>
+            <span className="text-lg font-bold tabular-nums text-amber-950">{ratioLabel}</span>
           </div>
         </div>
 
         <label className="flex flex-col gap-1.5 text-sm font-semibold text-amber-900">
           お湯の量 (ml)
-          <input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            step={1}
+          <NumericFieldInput
+            value={values.totalWaterMl}
+            onChange={setWater}
             disabled={disabled}
-            value={values.totalWaterMl > 0 ? values.totalWaterMl : ""}
-            onChange={(e) => setWater(e.target.value)}
-            className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 tabular-nums text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-60"
+            allowDecimal={false}
+            inputMode="numeric"
             placeholder="225"
+            className={fieldClassName}
           />
         </label>
       </div>
@@ -194,7 +199,7 @@ export default function BrewDoseRatioPanel({
       <div className="mt-4 rounded-xl border border-amber-100 bg-white/90 px-3 py-3">
         <div className="flex items-center justify-between gap-2 text-xs font-medium text-amber-800">
           <span>比率を微調整</span>
-          <span className="tabular-nums">{formatBrewRatioLabel(values.brewRatio)}</span>
+          <span className="tabular-nums">{ratioLabel}</span>
         </div>
         <input
           type="range"
@@ -202,7 +207,7 @@ export default function BrewDoseRatioPanel({
           max={20}
           step={0.5}
           disabled={disabled}
-          value={values.brewRatio}
+          value={values.brewRatio > 0 ? values.brewRatio : 15}
           onChange={(e) => setRatio(Number(e.target.value))}
           className="mt-2 h-2 w-full cursor-pointer appearance-none rounded-full bg-amber-100 accent-amber-700 disabled:opacity-50"
         />
@@ -213,9 +218,25 @@ export default function BrewDoseRatioPanel({
       </div>
 
       <p className="mt-3 text-center text-xs text-amber-900/70">
-        {values.coffeeDoseG}g × {formatBrewRatioLabel(values.brewRatio)} ={" "}
-        <span className="font-semibold text-amber-950">{values.totalWaterMl} ml</span>
+        {hasSummary ? (
+          <>
+            {values.coffeeDoseG}g × {formatBrewRatioLabel(values.brewRatio)} ≒{" "}
+            <span className="font-semibold text-amber-950">{values.totalWaterMl} ml</span>
+          </>
+        ) : (
+          <span className="text-amber-800/65">豆量・湯量を入力すると計算結果が表示されます</span>
+        )}
       </p>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="space-y-4">{body}</div>;
+  }
+
+  return (
+    <section className="rounded-2xl border border-amber-300/70 bg-gradient-to-br from-amber-50/95 via-white to-amber-50/40 p-4 shadow-sm sm:p-5">
+      {body}
     </section>
   );
 }

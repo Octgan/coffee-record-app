@@ -53,6 +53,8 @@ export type StoredBrewLog = {
   brewRatio?: number;
   /** 総湯量（ml） */
   totalWaterMl?: number;
+  /** TDS 濃度（%）。プロモード入力。例: 1.32 */
+  tds?: number;
 };
 
 export const BREW_METHOD_HAND_DRIP = "ハンドドリップ";
@@ -102,6 +104,33 @@ function finitePositiveWaterMl(value: unknown): number | null {
     return null;
   }
   return Math.round(value);
+}
+
+/** TDS（%）を小数点第二位まで。0〜100 の範囲 */
+function finiteTdsPercent(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) {
+    return null;
+  }
+  return Math.round(value * 100) / 100;
+}
+
+/** 表示用: TDS: 1.32% */
+export function formatTdsDisplay(tds: number): string {
+  const rounded = finiteTdsPercent(tds) ?? tds;
+  return `TDS: ${rounded.toFixed(2)}%`;
+}
+
+/** フォーム入力から TDS（%）をパース。空欄は undefined */
+export function parseTdsInput(raw: string): number | undefined {
+  const t = raw.trim().replace(",", ".");
+  if (t === "") {
+    return undefined;
+  }
+  const n = Number(t);
+  if (!Number.isFinite(n) || n < 0 || n > 100) {
+    return undefined;
+  }
+  return Math.round(n * 100) / 100;
 }
 
 /**
@@ -173,6 +202,7 @@ export function normalizeBrewLogForDatabase(log: StoredBrewLog): StoredBrewLog {
   const coffeeDoseG = doseEnabled ? finitePositiveDoseG(log.coffeeDoseG) : null;
   const brewRatio = doseEnabled ? finitePositiveBrewRatio(log.brewRatio) : null;
   const totalWaterMl = doseEnabled ? finitePositiveWaterMl(log.totalWaterMl) : null;
+  const tds = finiteTdsPercent(log.tds);
 
   const cafeLat = Number(log.cafeLat);
   const cafeLng = Number(log.cafeLng);
@@ -183,6 +213,7 @@ export function normalizeBrewLogForDatabase(log: StoredBrewLog): StoredBrewLog {
   delete logBase.coffeeDoseG;
   delete logBase.brewRatio;
   delete logBase.totalWaterMl;
+  delete logBase.tds;
 
   return {
     ...logBase,
@@ -213,7 +244,8 @@ export function normalizeBrewLogForDatabase(log: StoredBrewLog): StoredBrewLog {
     ...(totalBrewTimeSec !== null ? { totalBrewTimeSec } : {}),
     ...(coffeeDoseG !== null ? { coffeeDoseG } : {}),
     ...(brewRatio !== null ? { brewRatio } : {}),
-    ...(totalWaterMl !== null ? { totalWaterMl } : {})
+    ...(totalWaterMl !== null ? { totalWaterMl } : {}),
+    ...(tds !== null ? { tds } : {})
   };
 }
 
@@ -314,6 +346,7 @@ export function coerceStoredBrewLog(raw: unknown): StoredBrewLog | null {
   const coffeeDoseRaw = Number(raw.coffeeDoseG);
   const brewRatioRaw = Number(raw.brewRatio);
   const totalWaterRaw = Number(raw.totalWaterMl);
+  const tdsRaw = Number(raw.tds);
 
   return {
     id: raw.id,
@@ -356,6 +389,9 @@ export function coerceStoredBrewLog(raw: unknown): StoredBrewLog | null {
       : {}),
     ...(Number.isFinite(totalWaterRaw) && totalWaterRaw > 0
       ? { totalWaterMl: Math.round(totalWaterRaw) }
+      : {}),
+    ...(Number.isFinite(tdsRaw) && tdsRaw >= 0 && tdsRaw <= 100
+      ? { tds: Math.round(tdsRaw * 100) / 100 }
       : {})
   };
 }

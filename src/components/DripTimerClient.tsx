@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import NumericFieldInput from "@/components/NumericFieldInput";
 import {
   DEFAULT_DRIP_RECIPE,
   formatStepRemaining,
@@ -250,33 +251,33 @@ export default function DripTimerClient() {
                   type="text"
                   value={step.label}
                   onChange={(e) => updateStep(index, { label: e.target.value })}
-                  className="rounded-lg border border-amber-200 px-2 py-1.5 text-sm text-amber-950"
+                  className="rounded-lg border border-amber-200 px-2.5 py-2 text-base text-amber-950"
                   disabled={phase === "running"}
                 />
                 <label className="flex flex-col gap-0.5 text-[10px] font-medium text-amber-800">
                   湯量 g
-                  <input
-                    type="number"
-                    min={0}
+                  <NumericFieldInput
                     value={step.waterGrams}
-                    onChange={(e) =>
-                      updateStep(index, { waterGrams: Number(e.target.value) || 0 })
-                    }
-                    className="rounded-lg border border-amber-200 px-2 py-1.5 text-sm tabular-nums"
+                    onChange={(n) => updateStep(index, { waterGrams: n })}
+                    allowDecimal={false}
+                    inputMode="numeric"
+                    placeholder="0"
                     disabled={phase === "running"}
+                    className="rounded-lg border border-amber-200 px-2.5 py-2 text-base tabular-nums text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-60"
                   />
                 </label>
                 <label className="flex flex-col gap-0.5 text-[10px] font-medium text-amber-800">
                   秒
-                  <input
-                    type="number"
-                    min={1}
+                  <NumericFieldInput
                     value={step.durationSec}
-                    onChange={(e) =>
-                      updateStep(index, { durationSec: Math.max(1, Number(e.target.value) || 1) })
+                    onChange={(n) =>
+                      updateStep(index, { durationSec: n > 0 ? Math.round(n) : 0 })
                     }
-                    className="rounded-lg border border-amber-200 px-2 py-1.5 text-sm tabular-nums"
+                    allowDecimal={false}
+                    inputMode="numeric"
+                    placeholder="30"
                     disabled={phase === "running"}
+                    className="rounded-lg border border-amber-200 px-2.5 py-2 text-base tabular-nums text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-60"
                   />
                 </label>
               </div>            ))}

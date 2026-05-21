@@ -19,7 +19,8 @@ const OPTIONAL_MIGRATION_COLUMNS = [
   "total_brew_time_sec",
   "coffee_dose_g",
   "brew_ratio",
-  "total_water_ml"
+  "total_water_ml",
+  "tds"
 ] as const;
 
 function isSchemaColumnError(error: unknown): boolean {
@@ -121,6 +122,9 @@ export function brewRowToStoredLog(row: BrewRow): StoredBrewLog {
     !Number.isNaN(row.total_water_ml) &&
     row.total_water_ml > 0
       ? { totalWaterMl: row.total_water_ml }
+      : {}),
+    ...(typeof row.tds === "number" && !Number.isNaN(row.tds) && row.tds >= 0
+      ? { tds: row.tds }
       : {})
   };
 }
@@ -179,7 +183,9 @@ function storedLogToInsert(log: StoredBrewLog, userId: string): BrewInsert {
     total_water_ml:
       typeof normalized.totalWaterMl === "number" && Number.isFinite(normalized.totalWaterMl)
         ? normalized.totalWaterMl
-        : null
+        : null,
+    tds:
+      typeof normalized.tds === "number" && Number.isFinite(normalized.tds) ? normalized.tds : null
   };
 }
 
@@ -315,6 +321,8 @@ export async function updateBrewLog(
       typeof normalized.totalWaterMl === "number" && Number.isFinite(normalized.totalWaterMl)
         ? normalized.totalWaterMl
         : null,
+    tds:
+      typeof normalized.tds === "number" && Number.isFinite(normalized.tds) ? normalized.tds : null,
     updated_at: new Date().toISOString()
   };
 

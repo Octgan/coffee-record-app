@@ -13,16 +13,20 @@ import {
   COFFEE_BREW_METHOD_MAKER,
   formatBrewSaveError,
   normalizeBrewLogForDatabase,
+  parseTdsInput,
   type StoredBrewLog
 } from "@/lib/brewLogStorage";
 import { COFFEE_ORIGINS } from "@/lib/coffeeOrigins";
 import { createClient } from "@/lib/supabase/client";
 import { compressImageFileForUpload } from "@/lib/compressImageForUpload";
 import BrewDoseRatioPanel from "@/components/BrewDoseRatioPanel";
+import BrewFormAccordion from "@/components/BrewFormAccordion";
+import NumericFieldInput from "@/components/NumericFieldInput";
 import { DripTimerLaunchSection } from "@/components/OpenDripTimerButton";
 import {
   buildTimerRecipeFromDose,
   defaultBrewDoseRatioValues,
+  formatBrewRatioLabel,
   supportsBrewDoseRatio,
   type BrewDoseRatioValues
 } from "@/lib/brewDoseRatio";
@@ -118,7 +122,7 @@ function PaperFilterFields({
         value={paperFilter}
         disabled={disabled}
         onChange={(event) => onPaperFilterChange(event.target.value)}
-        className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-60"
+        className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-60"
         placeholder="例: Hario 円錐 01 / カリタ 102 ブラウン"
         autoComplete="off"
       />
@@ -134,18 +138,24 @@ function PaperFilterFields({
 function WaterTypeFields({
   waterType,
   onWaterTypeChange,
-  disabled = false
+  disabled = false,
+  hideTitle = false
 }: {
   waterType: string;
   onWaterTypeChange: (value: string) => void;
   disabled?: boolean;
+  hideTitle?: boolean;
 }) {
   return (
-    <label className="flex flex-col gap-2 text-sm font-semibold text-amber-950">
-      使用した水（Water）
-      <span className="text-xs font-normal text-amber-900/85">
-        よく使う水を選ぶか、銘柄・硬度などを自由入力してください。
-      </span>
+    <div className="flex flex-col gap-2 text-sm font-semibold text-amber-950">
+      {!hideTitle ? (
+        <>
+          <span className="text-sm font-semibold text-amber-950">使用した水（Water）</span>
+          <span className="text-xs font-normal text-amber-900/85">
+            よく使う水を選ぶか、銘柄・硬度などを自由入力してください。
+          </span>
+        </>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         {waterTypePresets.map((preset) => {
           const active = waterType === preset;
@@ -174,7 +184,7 @@ function WaterTypeFields({
         value={waterType}
         disabled={disabled}
         onChange={(event) => onWaterTypeChange(event.target.value)}
-        className="rounded-xl border border-sky-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-sky-400 disabled:opacity-60"
+        className="rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-sky-400 disabled:opacity-60"
         placeholder="例: エビス軟水 / ペルエチオ / 自宅の浄水器"
         autoComplete="off"
       />
@@ -183,7 +193,7 @@ function WaterTypeFields({
           <option key={preset} value={preset} />
         ))}
       </datalist>
-    </label>
+    </div>
   );
 }
 
@@ -407,6 +417,7 @@ function BrewNewPageContent() {
     defaultBrewDoseRatioValues()
   );
   const [beginnerWaterMl, setBeginnerWaterMl] = useState("");
+  const [tdsPercent, setTdsPercent] = useState("");
   const [timerAppliedMessage, setTimerAppliedMessage] = useState<string | null>(null);
   const brewPhotoInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -425,6 +436,12 @@ function BrewNewPageContent() {
             ? [grindSize]
             : [])
         ];
+
+  const isCuppingBrew = brewMethod === BREW_METHOD_CUPPING;
+  const brewRatioBadge =
+    brewDoseValues.brewRatio > 0
+      ? formatBrewRatioLabel(brewDoseValues.brewRatio)
+      : "1:15";
 
   const resetToNewBrewDefaults = useCallback(() => {
     setMode("beginner");
@@ -458,6 +475,7 @@ function BrewNewPageContent() {
     setTotalBrewTimeSec("");
     setBrewDoseValues(defaultBrewDoseRatioValues());
     setBeginnerWaterMl("");
+    setTdsPercent("");
     setTimerAppliedMessage(null);
     prevBrewMethodRef.current = brewMethods[0];
   }, []);
@@ -531,7 +549,8 @@ function BrewNewPageContent() {
           Boolean(log.paperFilter) ||
           Boolean(log.waterType) ||
           (log.coffeeDoseG != null && log.coffeeDoseG > 0) ||
-          (log.totalWaterMl != null && log.totalWaterMl > 0);
+          (log.totalWaterMl != null && log.totalWaterMl > 0) ||
+          (log.tds != null && log.tds >= 0);
         setMode(usePro ? "pro" : "beginner");
         const lat = log.cafeLat;
         const lng = log.cafeLng;
@@ -570,6 +589,9 @@ function BrewNewPageContent() {
         }
         setBeginnerWaterMl(
           log.totalWaterMl != null && log.totalWaterMl > 0 ? String(log.totalWaterMl) : ""
+        );
+        setTdsPercent(
+          log.tds != null && Number.isFinite(log.tds) ? String(log.tds) : ""
         );
         setBrewPhotoError(null);
         setFormDirty(false);
@@ -805,6 +827,7 @@ function BrewNewPageContent() {
     const waterTypeTrim = waterType.trim();
     const totalBrewParsed = parseSmallIntInput(totalBrewTimeSec);
     const beginnerWaterParsed = parseSmallIntInput(beginnerWaterMl);
+    const tdsParsed = parseTdsInput(tdsPercent);
     const isProMode = mode === "pro";
 
     const doseLogFields =
@@ -843,6 +866,7 @@ function BrewNewPageContent() {
       aftertaste,
       memo,
       ...(isProMode && waterTypeTrim !== "" ? { waterType: waterTypeTrim } : {}),
+      ...(isProMode && tdsParsed !== undefined ? { tds: tdsParsed } : {}),
       ...(totalBrewParsed !== undefined ? { totalBrewTimeSec: totalBrewParsed } : {}),
       ...doseLogFields,
       ...(cafeLinkCoords &&
@@ -1036,7 +1060,7 @@ function BrewNewPageContent() {
                     list="coffee-maker-course-suggestions"
                     value={coffeeMakerCourse}
                     onChange={(event) => setCoffeeMakerCourse(event.target.value)}
-                    className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                     placeholder="プリセットを選ぶか、メニュー名を自由入力（例: おかわり濃いめ）"
                     autoComplete="off"
                   />
@@ -1081,7 +1105,7 @@ function BrewNewPageContent() {
                     type="text"
                     value={beanName}
                     onChange={(event) => setBeanName(event.target.value)}
-                    className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                     placeholder={
                       cafeLinkCoords
                         ? "例: カフェラテ / 本日のドリップ"
@@ -1103,7 +1127,7 @@ function BrewNewPageContent() {
                     type="text"
                     value={roastery}
                     onChange={(event) => setRoastery(event.target.value)}
-                    className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                     placeholder="例: COFFEE ROASTER TOKYO / お気に入りのカフェ名"
                   />
                 </label>
@@ -1113,7 +1137,7 @@ function BrewNewPageContent() {
                   <select
                     value={roastLevel}
                     onChange={(event) => setRoastLevel(event.target.value)}
-                    className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                   >
                     {roastLevels.map((level) => (
                       <option key={level} value={level}>
@@ -1129,7 +1153,7 @@ function BrewNewPageContent() {
                     type="date"
                     value={brewDate}
                     onChange={(event) => setBrewDate(event.target.value)}
-                    className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                   />
                 </label>
                 <div className="sm:col-span-2">
@@ -1154,7 +1178,7 @@ function BrewNewPageContent() {
                           onChange={(event) =>
                             updateOriginEntry(entry.id, "country", event.target.value)
                           }
-                          className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                          className="rounded-lg border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                         >
                           {COFFEE_ORIGINS.map((country) => (
                             <option key={country.value} value={country.value}>
@@ -1162,16 +1186,19 @@ function BrewNewPageContent() {
                             </option>
                           ))}
                         </select>
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={entry.ratio}
-                          onChange={(event) =>
-                            updateOriginEntry(entry.id, "ratio", event.target.value)
+                        <NumericFieldInput
+                          value={parseSmallIntInput(entry.ratio) ?? 0}
+                          onChange={(n) =>
+                            updateOriginEntry(
+                              entry.id,
+                              "ratio",
+                              n > 0 ? String(Math.min(100, Math.round(n))) : ""
+                            )
                           }
-                          placeholder="%"
-                          className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                          allowDecimal={false}
+                          inputMode="numeric"
+                          placeholder="0"
+                          className="rounded-lg border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                         />
                         <button
                           type="button"
@@ -1224,15 +1251,14 @@ function BrewNewPageContent() {
                   <span className="text-xs font-normal text-amber-900/75">
                     お湯の総量だけ覚えておきたいときはここに入力。細かいレシオはプロモードで設定できます。
                   </span>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    value={beginnerWaterMl}
-                    onChange={(event) => setBeginnerWaterMl(event.target.value)}
+                  <NumericFieldInput
+                    value={parseSmallIntInput(beginnerWaterMl) ?? 0}
+                    onChange={(n) => setBeginnerWaterMl(n > 0 ? String(n) : "")}
                     disabled={isSaving}
-                    className="max-w-xs rounded-xl border border-amber-200 bg-white px-3 py-2.5 tabular-nums text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-60"
-                    placeholder="例: 225"
+                    allowDecimal={false}
+                    inputMode="numeric"
+                    placeholder="225"
+                    className="max-w-xs rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base tabular-nums text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-60"
                   />
                 </label>
               )}
@@ -1282,29 +1308,57 @@ function BrewNewPageContent() {
               </p>
             </div>
           ) : (
-            <div className="space-y-6">
-              <div className="rounded-2xl border border-amber-300/70 bg-gradient-to-br from-amber-50/90 via-white to-sky-50/30 p-5 sm:p-6">
-                <h2 className="text-base font-semibold text-amber-950">プロ用設定</h2>
-                <p className="mt-1 text-xs leading-relaxed text-amber-900/75">
-                  使用する水・豆量と湯量のバランス（レシオ）を記録します。ドリップタイマーにも連動します。
-                </p>
-                <div className="mt-4 space-y-4">
-                  <div className="rounded-xl border border-sky-200/80 bg-sky-50/40 p-4">
-                    <WaterTypeFields
-                      waterType={waterType}
-                      onWaterTypeChange={setWaterType}
-                      disabled={isSaving}
-                    />
-                  </div>
-                  {supportsBrewDoseRatio(brewMethod) && (
-                    <BrewDoseRatioPanel
-                      values={brewDoseValues}
-                      onChange={setBrewDoseValues}
-                      disabled={isSaving}
-                    />
-                  )}
+            <div className="space-y-4">
+              <BrewFormAccordion
+                title="使用した水（Water）"
+                description="よく使う水を選ぶか、銘柄・硬度などを自由入力してください。"
+              >
+                <div className="rounded-xl border border-sky-200/80 bg-sky-50/40 p-4">
+                  <WaterTypeFields
+                    waterType={waterType}
+                    onWaterTypeChange={setWaterType}
+                    disabled={isSaving}
+                    hideTitle
+                  />
                 </div>
-              </div>
+              </BrewFormAccordion>
+
+              {supportsBrewDoseRatio(brewMethod) && (
+                <BrewFormAccordion
+                  title="スマート湯量 & レシオ（比率）計算"
+                  description="豆量・比率・湯量が連動します。ドリップタイマーの各投にも反映されます。"
+                  trailing={
+                    <span className="rounded-full bg-amber-800 px-2.5 py-0.5 text-xs font-bold tabular-nums text-white shadow-sm">
+                      {brewRatioBadge}
+                    </span>
+                  }
+                >
+                  <BrewDoseRatioPanel
+                    values={brewDoseValues}
+                    onChange={setBrewDoseValues}
+                    disabled={isSaving}
+                    embedded
+                  />
+                </BrewFormAccordion>
+              )}
+
+              <BrewFormAccordion
+                title="TDS（%）"
+                description="濃度（Total Dissolved Solids）。小数点第二位まで入力できます。"
+              >
+                <label className="flex flex-col gap-2 text-sm font-semibold text-amber-950">
+                  <NumericFieldInput
+                    value={parseTdsInput(tdsPercent) ?? 0}
+                    onChange={(n) => setTdsPercent(n > 0 ? String(n) : "")}
+                    allowDecimal
+                    inputMode="decimal"
+                    disabled={isSaving}
+                    placeholder="1.32"
+                    className="max-w-[10rem] rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base tabular-nums text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400 disabled:opacity-60"
+                    aria-label="TDS 濃度（パーセント）"
+                  />
+                </label>
+              </BrewFormAccordion>
 
               {supportsDripTimer(brewMethod) && (
                 <DripTimerLaunchSection
@@ -1314,29 +1368,34 @@ function BrewNewPageContent() {
                 />
               )}
 
-              <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
-                <h2 className="text-base font-semibold text-amber-900">基本条件</h2>
-                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <BrewFormAccordion
+                title="基本条件"
+                description="湯温・蒸らし・環境など、抽出の基本パラメータを記録します。"
+                defaultOpen={isCuppingBrew}
+              >
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   {brewMethod !== COFFEE_BREW_METHOD_MAKER && brewMethod !== BREW_METHOD_CUPPING && (
                     <>
                       <label className="flex flex-col gap-2 text-sm font-medium text-amber-900">
                         水の温度 (°C)
-                        <input
-                          type="number"
-                          value={waterTempC}
-                          onChange={(event) => setWaterTempC(event.target.value)}
-                          className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        <NumericFieldInput
+                          value={parseSmallIntInput(waterTempC) ?? 0}
+                          onChange={(n) => setWaterTempC(n > 0 ? String(n) : "")}
+                          allowDecimal={false}
+                          inputMode="numeric"
                           placeholder="92"
+                          className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                         />
                       </label>
                       <label className="flex flex-col gap-2 text-sm font-medium text-amber-900">
                         蒸らし時間 (秒)
-                        <input
-                          type="number"
-                          value={bloomTimeSec}
-                          onChange={(event) => setBloomTimeSec(event.target.value)}
-                          className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        <NumericFieldInput
+                          value={parseSmallIntInput(bloomTimeSec) ?? 0}
+                          onChange={(n) => setBloomTimeSec(n > 0 ? String(n) : "")}
+                          allowDecimal={false}
+                          inputMode="numeric"
                           placeholder="40"
+                          className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                         />
                       </label>
                       {supportsDripTimer(brewMethod) && (
@@ -1345,13 +1404,13 @@ function BrewNewPageContent() {
                           <span className="text-xs font-normal text-amber-800/85">
                             ドリップタイマーで計測した値が自動で入ります。手入力もできます。
                           </span>
-                          <input
-                            type="number"
-                            min={0}
-                            value={totalBrewTimeSec}
-                            onChange={(event) => setTotalBrewTimeSec(event.target.value)}
-                            className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                            placeholder="例: 180"
+                          <NumericFieldInput
+                            value={parseSmallIntInput(totalBrewTimeSec) ?? 0}
+                            onChange={(n) => setTotalBrewTimeSec(n > 0 ? String(n) : "")}
+                            allowDecimal={false}
+                            inputMode="numeric"
+                            placeholder="180"
+                            className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                           />
                         </label>
                       )}
@@ -1361,12 +1420,13 @@ function BrewNewPageContent() {
                     <>
                       <label className="flex flex-col gap-2 text-sm font-medium text-amber-900">
                         湯温 (°C)
-                        <input
-                          type="number"
-                          value={waterTempC}
-                          onChange={(event) => setWaterTempC(event.target.value)}
-                          className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        <NumericFieldInput
+                          value={parseSmallIntInput(waterTempC) ?? 0}
+                          onChange={(n) => setWaterTempC(n > 0 ? String(n) : "")}
+                          allowDecimal={false}
+                          inputMode="numeric"
                           placeholder="93"
+                          className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                         />
                       </label>
                       <label className="flex flex-col gap-2 text-sm font-semibold text-amber-950 sm:col-span-2 lg:col-span-3">
@@ -1383,7 +1443,7 @@ function BrewNewPageContent() {
                           value={steepTimeMemo}
                           onChange={(event) => setSteepTimeMemo(event.target.value)}
                           rows={3}
-                          className="min-h-[5.5rem] rounded-xl border-2 border-amber-400 bg-white px-3 py-2 text-amber-950 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          className="min-h-[5.5rem] rounded-xl border-2 border-amber-400 bg-white px-3 py-2.5 text-base text-amber-950 shadow-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
                           placeholder="例: 注湯完了 0:00 → 4:00 にブレイク / 香りのメモ"
                         />
                       </label>
@@ -1393,7 +1453,7 @@ function BrewNewPageContent() {
                     気温 (°C)
                     <input
                       type="number"
-                      className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                       placeholder="24"
                     />
                   </label>
@@ -1401,21 +1461,18 @@ function BrewNewPageContent() {
                     湿度 (%)
                     <input
                       type="number"
-                      className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                       placeholder="55"
                     />
                   </label>
                 </div>
-              </div>
+              </BrewFormAccordion>
 
-              <details className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5 open:shadow-sm">
-                <summary className="cursor-pointer list-none text-base font-semibold text-amber-900">
-                  詳細設定（器具・工程）
-                </summary>
-                <p className="mt-2 text-sm text-amber-900/75">
-                  プロ向けに器具情報やこだわり工程を記録できます。
-                </p>
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <BrewFormAccordion
+                title="詳細設定（器具・工程）"
+                description="プロ向けに器具情報やこだわり工程を記録できます。"
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
                   {brewMethod !== BREW_METHOD_CUPPING ? (
                     <label className="flex flex-col gap-2 text-sm font-medium text-amber-900 sm:col-span-2">
                       使用器具（名前 / メーカー）
@@ -1423,7 +1480,7 @@ function BrewNewPageContent() {
                         type="text"
                         value={equipmentName}
                         onChange={(event) => setEquipmentName(event.target.value)}
-                        className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                         placeholder="例: Hario V60 / Fellow Stagg EKG"
                       />
                     </label>
@@ -1461,66 +1518,57 @@ function BrewNewPageContent() {
                     RTD
                   </label>
                 </div>
-              </details>
+              </BrewFormAccordion>
 
-              <div
-                className={`rounded-2xl border bg-amber-50/50 p-5 ${
-                  brewMethod === BREW_METHOD_CUPPING
-                    ? "border-2 border-amber-500 shadow-md shadow-amber-900/10"
-                    : "border border-amber-200"
-                }`}
-              >
-                <h2 className="text-base font-semibold text-amber-900">
-                  抽出方法別の詳細
-                  {brewMethod === BREW_METHOD_CUPPING && (
-                    <span className="ml-2 text-xs font-normal text-amber-800">
-                      （挽き目を中心に記録）
+              <BrewFormAccordion
+                title="粉の挽き具合（挽き目）"
+                description={
+                  isCuppingBrew
+                    ? "カッピングではやや粗めが一般的です。リスト先頭に候補をまとめています。"
+                    : "現在の抽出方法に合わせた挽き目を選びます。"
+                }
+                defaultOpen={isCuppingBrew}
+                highlighted={isCuppingBrew}
+                trailing={
+                  isCuppingBrew ? (
+                    <span className="rounded-full bg-amber-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                      カッピング
                     </span>
-                  )}
-                </h2>
-                <p className="mt-2 text-sm text-amber-900/80">
-                  現在の選択: {brewMethod}
-                </p>
-
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <label
-                    className={`flex flex-col gap-2 text-sm font-medium sm:col-span-2 ${
-                      brewMethod === BREW_METHOD_CUPPING
-                        ? "text-amber-950"
-                        : "text-amber-900"
+                  ) : undefined
+                }
+              >
+                <label
+                  className={`flex flex-col gap-2 text-sm font-medium ${
+                    isCuppingBrew ? "text-amber-950" : "text-amber-900"
+                  }`}
+                >
+                  <select
+                    value={grindSize}
+                    onChange={(event) => setGrindSize(event.target.value)}
+                    className={`w-full rounded-xl border bg-white px-4 py-3 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400 ${
+                      isCuppingBrew
+                        ? "border-2 border-amber-500 font-medium"
+                        : "border border-amber-200"
                     }`}
                   >
-                    <span className="flex flex-wrap items-center gap-2">
-                      粉の挽き具合（挽き目）
-                      {brewMethod === BREW_METHOD_CUPPING && (
-                        <span className="rounded-full bg-amber-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                          カッピング
-                        </span>
-                      )}
-                    </span>
-                    {brewMethod === BREW_METHOD_CUPPING && (
-                      <span className="text-xs font-normal text-amber-800/90">
-                        カッピングではやや粗めが一般的です。リスト先頭に候補をまとめています。
-                      </span>
-                    )}
-                    <select
-                      value={grindSize}
-                      onChange={(event) => setGrindSize(event.target.value)}
-                      className={`w-full rounded-xl border bg-white px-4 py-3 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400 ${
-                        brewMethod === BREW_METHOD_CUPPING
-                          ? "border-2 border-amber-500 font-medium"
-                          : "border border-amber-200"
-                      }`}
-                    >
-                      <option value="">選択してください</option>
-                      {grindSelectOptions.map((size) => (
-                        <option key={size} value={size}>
-                          {size}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                    <option value="">選択してください</option>
+                    {grindSelectOptions.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </BrewFormAccordion>
 
+              {(brewMethod === "エスプレッソ" ||
+                brewMethod === "サイフォン" ||
+                brewMethod === "コールドブリュー" ||
+                brewMethod === "ネルドリップ") && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
+                  <h2 className="text-base font-semibold text-amber-900">抽出方法別の詳細</h2>
+                  <p className="mt-2 text-sm text-amber-900/80">現在の選択: {brewMethod}</p>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   {brewMethod === "エスプレッソ" && (
                     <>
                       <label className="flex flex-col gap-2 text-sm font-medium text-amber-900">
@@ -1528,7 +1576,7 @@ function BrewNewPageContent() {
                         <input
                           type="number"
                           step="0.1"
-                          className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                          className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                           placeholder="9.0"
                         />
                       </label>
@@ -1537,7 +1585,7 @@ function BrewNewPageContent() {
                         <input
                           type="number"
                           step="0.1"
-                          className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                          className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                           placeholder="18"
                         />
                       </label>
@@ -1546,7 +1594,7 @@ function BrewNewPageContent() {
                         <input
                           type="number"
                           step="0.1"
-                          className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                          className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                           placeholder="36"
                         />
                       </label>
@@ -1557,7 +1605,7 @@ function BrewNewPageContent() {
                     <label className="flex flex-col gap-2 text-sm font-medium text-amber-900 sm:col-span-2">
                       火力調整のメモ
                       <textarea
-                        className="min-h-24 rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        className="min-h-24 rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                         placeholder="例: 中火で開始、30秒後に弱火へ"
                       />
                     </label>
@@ -1568,7 +1616,7 @@ function BrewNewPageContent() {
                       抽出時間 (時間)
                       <input
                         type="number"
-                        className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                         placeholder="12"
                       />
                     </label>
@@ -1583,18 +1631,15 @@ function BrewNewPageContent() {
                       点滴抽出を行った
                     </label>
                   )}
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5">
-                <h2 className="text-base font-semibold text-amber-900">
-                  テイスティング評価
-                </h2>
-                <p className="mt-2 text-sm text-amber-900/80">
-                  フレーバーホイールを参考に、系統から詳細フレーバーを選択できます。
-                </p>
-
-                <div className="mt-4">
+              <BrewFormAccordion
+                title="テイスティング評価"
+                description="フレーバーホイールを参考に、系統から詳細フレーバーを選択できます。"
+              >
+                <div>
                   <p className="text-sm font-semibold text-amber-900">大分類</p>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {flavorFamilies.map((family) => (
@@ -1705,7 +1750,7 @@ function BrewNewPageContent() {
                       type="text"
                       value={foodPairing}
                       onChange={(event) => setFoodPairing(event.target.value)}
-                      className="mt-2 w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      className="mt-2 w-full rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                       placeholder="例: アップルパイ"
                     />
                   </div>
@@ -1714,7 +1759,7 @@ function BrewNewPageContent() {
                     <select
                       value={overallRating}
                       onChange={(event) => setOverallRating(Number(event.target.value))}
-                      className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                     >
                       {[1, 2, 3, 4, 5].map((rating) => (
                         <option key={rating} value={rating}>
@@ -1729,7 +1774,7 @@ function BrewNewPageContent() {
                       type="text"
                       value={aftertaste}
                       onChange={(event) => setAftertaste(event.target.value)}
-                      className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      className="rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                       placeholder="例: 余韻が長く甘い"
                     />
                   </label>
@@ -1738,12 +1783,12 @@ function BrewNewPageContent() {
                     <textarea
                       value={memo}
                       onChange={(event) => setMemo(event.target.value)}
-                      className="min-h-28 rounded-xl border border-amber-200 bg-white px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                      className="min-h-28 rounded-xl border border-amber-200 bg-white px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                       placeholder="味のバランス、改善点などを記録"
                     />
                   </label>
                 </div>
-              </div>
+              </BrewFormAccordion>
             </div>
           )}
 

@@ -35,6 +35,8 @@ export type BrewLogRow = {
   coffee_dose_g: number | null;
   brew_ratio: number | null;
   total_water_ml: number | null;
+  /** TDS 濃度（%）。未記録は null */
+  tds: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -98,6 +100,7 @@ export type Database = {
           coffee_dose_g?: number | null;
           brew_ratio?: number | null;
           total_water_ml?: number | null;
+          tds?: number | null;
         };
         Update: Partial<Omit<BrewLogRow, "id" | "user_id">>;
         Relationships: [];

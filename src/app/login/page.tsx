@@ -132,7 +132,7 @@ function LoginFields({ nextPath, showConfigInstructions, showAuthError }: LoginF
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-amber-200 px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              className="mt-1 w-full rounded-lg border border-amber-200 px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
             />
           </label>
           <label className="block text-sm font-medium text-amber-900">
@@ -144,7 +144,7 @@ function LoginFields({ nextPath, showConfigInstructions, showAuthError }: LoginF
               minLength={6}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-amber-200 px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              className="mt-1 w-full rounded-lg border border-amber-200 px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
             />
           </label>
           {message && (

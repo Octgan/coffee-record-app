@@ -456,7 +456,7 @@ export default function CafeMapPage() {
                   onChange={(event) =>
                     setEditingDraft((d) => (d ? { ...d, cafeName: event.target.value } : d))
                   }
-                  className="rounded-lg border border-amber-200 px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  className="rounded-lg border border-amber-200 px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                 />
               </label>
               <label className="flex flex-col gap-1 font-medium text-amber-900">
@@ -467,7 +467,7 @@ export default function CafeMapPage() {
                   onChange={(event) =>
                     setEditingDraft((d) => (d ? { ...d, date: event.target.value } : d))
                   }
-                  className="rounded-lg border border-amber-200 px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  className="rounded-lg border border-amber-200 px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                 />
               </label>
               <label className="flex flex-col gap-1 font-medium text-amber-900">
@@ -479,7 +479,7 @@ export default function CafeMapPage() {
                       d ? { ...d, rating: Number(event.target.value) } : d
                     )
                   }
-                  className="rounded-lg border border-amber-200 px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  className="rounded-lg border border-amber-200 px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                 >
                   {[1, 2, 3, 4, 5].map((n) => (
                     <option key={n} value={n}>
@@ -499,7 +499,7 @@ export default function CafeMapPage() {
                   onChange={(event) =>
                     setEditingDraft((d) => (d ? { ...d, bean: event.target.value } : d))
                   }
-                  className="rounded-lg border border-amber-200 px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  className="rounded-lg border border-amber-200 px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                   placeholder="例: アイスラテ / エチオピア イルガチェフェ"
                 />
               </label>
@@ -529,7 +529,7 @@ export default function CafeMapPage() {
                   onChange={(event) =>
                     setEditingDraft((d) => (d ? { ...d, foodPairing: event.target.value } : d))
                   }
-                  className="mt-2 w-full rounded-lg border border-amber-200 px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  className="mt-2 w-full rounded-lg border border-amber-200 px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                   placeholder="自由入力"
                 />
               </div>
@@ -541,7 +541,7 @@ export default function CafeMapPage() {
                     setEditingDraft((d) => (d ? { ...d, note: event.target.value } : d))
                   }
                   rows={3}
-                  className="rounded-lg border border-amber-200 px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  className="rounded-lg border border-amber-200 px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                 />
               </label>
               <div className="flex flex-col gap-1">
@@ -554,7 +554,7 @@ export default function CafeMapPage() {
                     onChange={(event) =>
                       setEditingDraft((d) => (d ? { ...d, photoUrl: event.target.value } : d))
                     }
-                    className="min-w-0 flex-1 rounded-lg border border-amber-200 px-3 py-2 text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    className="min-w-0 flex-1 rounded-lg border border-amber-200 px-3 py-2.5 text-base text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-400"
                     placeholder="https://… またはアップロードで自動入力"
                   />
                   <input

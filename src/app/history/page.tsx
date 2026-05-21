@@ -255,7 +255,7 @@ export default function HistoryPage() {
                     new Date(Number(event.target.value), currentMonth.getMonth(), 1)
                   )
                 }
-                className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                className="rounded-lg border border-amber-300 bg-white px-3 py-2.5 text-base text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
               >
                 {yearOptions.map((year) => (
                   <option key={year} value={year}>
@@ -273,7 +273,7 @@ export default function HistoryPage() {
                     new Date(currentMonth.getFullYear(), Number(event.target.value), 1)
                   )
                 }
-                className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                className="rounded-lg border border-amber-300 bg-white px-3 py-2.5 text-base text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
               >
                 {monthOptions.map((month) => (
                   <option key={month.value} value={month.value}>

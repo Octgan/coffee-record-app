@@ -26,6 +26,7 @@ body {
 
 /*
  * 入力欄は白系背景＋黒系文字で常に読みやすく（ブラウザのダーク推測に依存しない）
+ * font-size 16px (1rem): iOS Safari は 16px 未満の input フォーカス時に画面を自動ズームする
  */
 input:where(
     :not([type]),
@@ -44,6 +45,8 @@ input:where(
   ),
 textarea,
 select {
+  font-size: 1rem !important;
+  line-height: 1.5;
   background-color: #ffffff !important;
   color: #111111 !important;
   color-scheme: light;

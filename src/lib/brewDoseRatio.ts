@@ -27,6 +27,9 @@ export function supportsBrewDoseRatio(method: string): boolean {
 }
 
 export function formatBrewRatioLabel(ratio: number): string {
+  if (!Number.isFinite(ratio) || ratio <= 0) {
+    return "1:—";
+  }
   const r = roundRatio(ratio);
   return Number.isInteger(r) ? `1:${r}` : `1:${r.toFixed(1)}`;
 }
@@ -64,13 +67,12 @@ export function doseFromWater(totalWaterMl: number, brewRatio: number): number {
   return roundDoseG(totalWaterMl / brewRatio);
 }
 
+/** 新規入力は空欄から。プレースホルダーで目安を表示 */
 export function defaultBrewDoseRatioValues(): BrewDoseRatioValues {
-  const coffeeDoseG = DEFAULT_COFFEE_DOSE_G;
-  const brewRatio = DEFAULT_BREW_RATIO;
   return {
-    coffeeDoseG,
-    brewRatio,
-    totalWaterMl: waterFromDose(coffeeDoseG, brewRatio)
+    coffeeDoseG: 0,
+    brewRatio: DEFAULT_BREW_RATIO,
+    totalWaterMl: 0
   };
 }
 

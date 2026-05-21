@@ -19,6 +19,7 @@ export const metadata: Metadata = {
   }
 };
 
+/** iOS の入力フォーカス時ズームは viewport 制限ではなく入力 16px（globals.css）で防止 */
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
